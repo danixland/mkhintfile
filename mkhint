@@ -1,14 +1,15 @@
 #!/bin/bash
 
-# mkhintfile.sh - Manage hint files for slackrepo scripts
+# mkhint - Manage hint files for slackrepo scripts
 #
 # Usage:
-#   ./mkhintfile.sh --version VERSION --hintfile FILE    Update existing hint file
-#   ./mkhintfile.sh --version VERSION --new FILE         Create new hint file
-#   ./mkhintfile.sh --new FILE                           Create new hint file (no version)
-#   ./mkhintfile.sh --list                               List hint files
-#   ./mkhintfile.sh --clean                              Remove .bak files from HINT_DIR
-#   ./mkhintfile.sh --help                               Show this help
+#   ./mkhint --version VERSION --hintfile FILE    Update existing hint file
+#   ./mkhint --version VERSION --new FILE         Create new hint file
+#   ./mkhint --new FILE                           Create new hint file (no version)
+#   ./mkhint --list                               List hint files
+#   ./mkhint --clean                              Remove .bak files from HINT_DIR
+#   ./mkhint --delete FILE                        Delete a hint file (and .bak if present)
+#   ./mkhint --help                               Show this help
 
 set -e
 
@@ -26,20 +27,21 @@ fi
 VERSION=""
 HINT_FILE=""
 NEW_HINT_FILE=""
+DELETE_HINT_FILES=()
 COMMAND=""
 
 # Show help message
 show_help() {
     cat <<EOF
-mkhintfile.sh - Manage hint files for slackrepo scripts
+mkhint - Manage hint files for slackrepo scripts
 
 Usage:
-  ./mkhintfile.sh --version VERSION --hintfile FILE    Update existing hint file
-  ./mkhintfile.sh --version VERSION --new FILE         Create new hint file
-  ./mkhintfile.sh --new FILE                           Create new hint file (no version)
-  ./mkhintfile.sh --list                               List hint files
-  ./mkhintfile.sh --clean                              Remove .bak files from HINT_DIR
-  ./mkhintfile.sh --help                               Show this help
+  ./mkhint --version VERSION --hintfile FILE    Update existing hint file
+  ./mkhint --version VERSION --new FILE         Create new hint file
+  ./mkhint --new FILE                           Create new hint file (no version)
+  ./mkhint --list                               List hint files
+  ./mkhint --clean                              Remove .bak files from HINT_DIR
+  ./mkhint --help                               Show this help
 
 Options:
   --version, -v VERSION    New version string (required for --hintfile)
@@ -47,6 +49,7 @@ Options:
   --new, -n FILE           Create new hint file (required with --version or standalone)
   --list, -l               List all hint files in the default directory
   --clean, -c              Remove all .bak files from HINT_DIR
+  --delete, -d FILE        Delete a hint file (and .bak if present)
   --help, -h               Show this help message
 
 Hint files are stored in: $HINT_DIR
@@ -243,6 +246,32 @@ update_hint_file() {
     echo; echo "=========================================="
 }
 
+# Delete a hint file (and .bak if present)
+delete_hint_file() {
+    local file="$1"
+    local normalized_file="${file}"
+
+    if [[ "$file" != *.hint ]]; then
+        normalized_file="${file}.hint"
+    fi
+
+    local full_path="${HINT_DIR}/${normalized_file}"
+
+    if [[ ! -f "$full_path" ]]; then
+        echo "Error: Hint file does not exist: $full_path" >&2
+        exit 2
+    fi
+
+    rm "$full_path"
+    echo "Deleted: $full_path"
+
+    local bak_path="${full_path}.bak"
+    if [[ -f "$bak_path" ]]; then
+        rm "$bak_path"
+        echo "Deleted: $bak_path"
+    fi
+}
+
 # Clean .bak files from HINT_DIR
 clean_bak_files() {
     if [[ ! -d "$HINT_DIR" ]]; then
@@ -286,6 +315,13 @@ main() {
                 COMMAND="clean"
                 shift
                 ;;
+            --delete|-d)
+                shift
+                while [[ $# -gt 0 && "$1" != -* ]]; do
+                    DELETE_HINT_FILES+=("$1")
+                    shift
+                done
+                ;;
             --help|-h)
                 COMMAND="help"
                 shift
@@ -304,6 +340,8 @@ main() {
             COMMAND="update"
         elif [[ -n "$NEW_HINT_FILE" ]]; then
             COMMAND="new"
+        elif [[ ${#DELETE_HINT_FILES[@]} -gt 0 ]]; then
+            COMMAND="delete"
         fi
     fi
 
@@ -323,6 +361,11 @@ main() {
             ;;
         new)
             create_new_hint_file "$NEW_HINT_FILE"
+            ;;
+        delete)
+            for f in "${DELETE_HINT_FILES[@]}"; do
+                delete_hint_file "$f"
+            done
             ;;
         *)
             echo "Error: Unknown command: $COMMAND" >&2

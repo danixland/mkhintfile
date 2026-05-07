@@ -1,4 +1,4 @@
-# mkhintfile.sh
+# mkhint
 
 Manage hint files for slackrepo scripts. Updates version strings and download checksums, or creates new hint files from repository .info files.
 
@@ -7,18 +7,18 @@ Manage hint files for slackrepo scripts. Updates version strings and download ch
 ### Script
 
 ```bash
-sudo cp mkhintfile.sh /usr/local/bin/mkhintfile
+sudo cp mkhint /usr/local/bin/mkhint
 ```
 
 ### Bash Completion
 
 ```bash
-sudo cp mkhintfile.bash-completion /etc/bash-completion.d/mkhintfile
+sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
 ```
 
 ### Configuration
 
-Edit the paths at the top of mkhintfile.sh to match your setup:
+Edit the paths at the top of mkhint to match your setup (lines 16–17):
 
 ```bash
 REPO_DIR="/var/lib/sbopkg/SBo-danix"   # Repository containing .info files

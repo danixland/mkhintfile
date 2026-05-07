@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-`mkhintfile.sh` — bash utility for managing [slackrepo](https://idlemoor.github.io/slackrepo/) hint files. Hint files override build variables (version, download URL, checksum) for SlackBuilds.
+`mkhint` — bash utility for managing [slackrepo](https://idlemoor.github.io/slackrepo/) hint files. Hint files override build variables (version, download URL, checksum) for SlackBuilds.
 
 ## Configuration
 
-Two paths hardcoded near top of `mkhintfile.sh` (lines 16–17):
+Two paths hardcoded near top of `mkhint` (lines 16–17):
 
 ```bash
 REPO_DIR="/var/lib/sbopkg/SBo-danix/"      # SBo repository with .info files
@@ -22,12 +22,12 @@ Bash completion script has its own hardcoded copies (lines 8–9) — keep in sy
 No build step. Direct execution:
 
 ```bash
-bash mkhintfile.sh --help
-bash mkhintfile.sh --list
-bash mkhintfile.sh --version 2.0.1 --hintfile mypackage
-bash mkhintfile.sh --version 1.2.3 --new mypackage
-bash mkhintfile.sh --new mypackage   # empty hint, no version
-bash mkhintfile.sh --clean
+bash mkhint --help
+bash mkhint --list
+bash mkhint --version 2.0.1 --hintfile mypackage
+bash mkhint --version 1.2.3 --new mypackage
+bash mkhint --new mypackage   # empty hint, no version
+bash mkhint --clean
 ```
 
 No test suite exists. Test manually against real `REPO_DIR`/`HINT_DIR` or with mock directories.
@@ -52,6 +52,6 @@ No test suite exists. Test manually against real `REPO_DIR`/`HINT_DIR` or with m
 ## Installation
 
 ```bash
-sudo cp mkhintfile.sh /usr/local/bin/mkhintfile
-sudo cp mkhintfile.bash-completion /etc/bash-completion.d/mkhintfile
+sudo cp mkhint /usr/local/bin/mkhint
+sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
 ```
