@@ -1,0 +1,33 @@
+# bash completion for mkhintfile.sh
+# Install: sudo cp mkhintfile.bash-completion /etc/bash-completion.d/mkhintfile
+
+_mkhintfile_completions() {
+    local cur prev repo_dir hint_dir
+    _init_completion || return
+
+    repo_dir="/var/lib/sbopkg/SBo-danix"
+    hint_dir="/tmp/hintdir"
+
+    case "$prev" in
+        --new|-n)
+            local -a words=()
+            for f in "$repo_dir"/*.info; do
+                [[ -f "$f" ]] && words+=("$(basename "${f%.info}")")
+            done
+            COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
+            ;;
+        --hintfile|-f)
+            local -a words=()
+            for f in "$hint_dir"/*.hint; do
+                [[ -f "$f" ]] && words+=("$(basename "${f%.hint}")")
+            done
+            COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
+            ;;
+        # --version (no completion, raw text)
+        # --list, --help (no value completion, flags only)
+        *)
+            ;;
+    esac
+}
+
+complete -F _mkhintfile_completions mkhintfile.sh

@@ -1,0 +1,335 @@
+#!/bin/bash
+
+# mkhintfile.sh - Manage hint files for slackrepo scripts
+#
+# Usage:
+#   ./mkhintfile.sh --version VERSION --hintfile FILE    Update existing hint file
+#   ./mkhintfile.sh --version VERSION --new FILE         Create new hint file
+#   ./mkhintfile.sh --new FILE                           Create new hint file (no version)
+#   ./mkhintfile.sh --list                               List hint files
+#   ./mkhintfile.sh --clean                              Remove .bak files from HINT_DIR
+#   ./mkhintfile.sh --help                               Show this help
+
+set -e
+
+# Default configuration
+REPO_DIR="/var/lib/sbopkg/SBo-danix/"
+HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"
+TMP_DIR="/tmp/mkhint"
+
+# create the temp dir if not existing
+if [[ ! -d $TMP_DIR ]]; then
+    mkdir $TMP_DIR
+fi
+
+# Variables
+VERSION=""
+HINT_FILE=""
+NEW_HINT_FILE=""
+COMMAND=""
+
+# Show help message
+show_help() {
+    cat <<EOF
+mkhintfile.sh - Manage hint files for slackrepo scripts
+
+Usage:
+  ./mkhintfile.sh --version VERSION --hintfile FILE    Update existing hint file
+  ./mkhintfile.sh --version VERSION --new FILE         Create new hint file
+  ./mkhintfile.sh --new FILE                           Create new hint file (no version)
+  ./mkhintfile.sh --list                               List hint files
+  ./mkhintfile.sh --clean                              Remove .bak files from HINT_DIR
+  ./mkhintfile.sh --help                               Show this help
+
+Options:
+  --version, -v VERSION    New version string (required for --hintfile)
+  --hintfile, -f FILE      Path to existing hint file (required with --version)
+  --new, -n FILE           Create new hint file (required with --version or standalone)
+  --list, -l               List all hint files in the default directory
+  --clean, -c              Remove all .bak files from HINT_DIR
+  --help, -h               Show this help message
+
+Hint files are stored in: $HINT_DIR
+Temporary files are stored in: $TMP_DIR
+
+Variables order in hint files:
+  VERSION, ARCH, DOWNLOAD, MD5SUM, DOWNLOAD_x86_64, MD5SUM_x86_64
+
+Exit codes:
+  0 - Success
+  1 - Invalid arguments or missing required options
+  2 - File not found
+  3 - File already exists
+  4 - wget not available
+EOF
+}
+
+# List hint files
+list_hint_files() {
+    if [[ ! -d "$HINT_DIR" ]]; then
+        echo "Error: Hint directory does not exist: $HINT_DIR" >&2
+        exit 2
+    fi
+
+    echo "Hint files in: $HINT_DIR"
+    echo "======================================================="
+    printf "%-40s  %10s  %10s  %-20s  %s\n" "File" "HintVer" "SBOVer" "Category" "Created"
+    echo "-------------------------------------------------------"
+
+    local count=0
+    for file in "$HINT_DIR"/*.hint; do
+        if [[ -f "$file" ]]; then
+            local VER=$(grep "^VERSION" "$file" |cut -d '"' -f2)
+            local name=$(basename "$file")
+            local pkg="${name%.hint}"
+            local info_file
+            info_file=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
+            local SBO_VER=""
+            local category=""
+            if [[ -f "$info_file" ]]; then
+                SBO_VER=$(grep "^VERSION" "$info_file" | cut -d '"' -f2)
+                category=$(basename "$(dirname "$(dirname "$info_file")")")
+            fi
+            local date=$(stat -c "%y" "$file" | cut -d'.' -f1)
+            printf "%-40s  %10s  %10s  %-20s  %s\n" "$name" "$VER" "$SBO_VER" "$category" "$date"
+            count=$((count + 1))
+        fi
+    done
+
+    if [[ $count -eq 0 ]]; then
+        echo "  (no hint files found)"
+    fi
+
+    echo "======================================================="
+    echo "Total: $count file(s)"
+}
+
+# Validate wget availability
+check_wget() {
+    if ! command -v wget &> /dev/null; then
+        echo "Error: wget is not installed. Please install wget first." >&2
+        exit 4
+    fi
+}
+
+# download files
+download_file() {
+    local url="$1"
+    local dlfile="${TMP_DIR}/download"
+
+    if [[ -f $dlfile ]]; then
+        rm $dlfile
+    fi
+
+    # Download the file
+    if [[ ! -z $1 ]]; then
+        wget -O "$dlfile" "$url" || return 1
+    fi
+
+    # calculate md5
+    local md5=$(md5sum "$dlfile" | awk '{print $1}')
+    rm $dlfile
+    echo $md5
+}
+
+# Create new hint file
+create_new_hint_file() {
+    cd $HINT_DIR
+    local file="$1"
+    local normalized_file="${file}"
+
+    if [[ "$file" != *.hint ]]; then
+        normalized_file="${file}.hint"
+    fi
+
+    # search repository for .info file
+    info=$(find $REPO_DIR -mindepth 2 -name ${normalized_file%.hint}.info)
+
+    # Check if file exists
+    if [[ ! -f "$normalized_file" ]]; then
+        # the hint file we want to create doesn't exists, so we can check 
+        # the sbo repository for a .info file and use that as hint
+        if [[ -n $info ]]; then
+            cp $info $normalized_file
+            # remove unwanted lines from hint file
+            sed -i -e "/^PRGNAM=/d" \
+            -e "/^HOMEPAGE=/d" \
+            -e "/^MAINTAINER=/d" \
+            -e "/^EMAIL=/d" \
+            -e "s/^REQUIRES=/#REQUIRES=/" \
+            "${normalized_file}"
+
+            if grep -q '^ARCH=' $normalized_file; then
+                sed -i 's/^ARCH=.*/ARCH="x86_64"/' $normalized_file
+            else
+                echo 'ARCH="x86_64"' >> $normalized_file
+            fi
+
+            echo "generated $normalized_file from $(basename $info)."
+            echo "Check variables before using."
+        fi
+    else
+        echo "Hint file exists: $normalized_file" >&2
+        mv "$normalized_file" "${normalized_file}.bak"
+        echo "Backed up to: ${normalized_file}.bak" >&2
+        # Create new hint file with empty variables
+        cat > "$normalized_file" <<EOF
+VERSION=""
+ARCH="x86_64"
+DOWNLOAD=""
+MD5SUM=""
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+
+        echo "Created new hint file [EMPTY]: $normalized_file"
+
+    fi
+}
+
+# Update existing hint file
+update_hint_file() {
+    cd "$HINT_DIR"
+    local file="$1"
+    local new_version="$2"
+    local old_version=""
+
+    local normalized_file="${file}"
+
+    if [[ "$file" != *.hint ]]; then
+        normalized_file="${file}.hint"
+    fi
+
+    # Check if file exists
+    if [[ ! -f "$normalized_file" ]]; then
+        echo "Error: Hint file does not exist: $normalized_file" >&2
+        exit 2
+    fi
+
+    # Force backup as precaution before modifying
+    echo "Hint file exists: $normalized_file" >&2
+    cp "$normalized_file" "${normalized_file}.bak"
+    echo "Backed up to: ${normalized_file}.bak" >&2
+
+    # Extract current version from hint file
+    old_version=$(grep '^VERSION=' "$normalized_file" | sed 's/VERSION="//;s/"$//')
+
+    # Use sed for global replacement of OLD_VERSION in all variables
+    sed -i "s/${old_version}/${new_version}/g" "$normalized_file"
+
+    download=$(grep '^DOWNLOAD=' "$normalized_file" | sed 's/DOWNLOAD="//;s/"$//')
+    if [[ -n "$download" ]]; then
+        if [[ $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
+            # we skip for unsupported or untested arch
+            sum=$(download_file ${download})
+            sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$normalized_file"
+        fi
+    fi
+
+    # we should repeat the check for x86_64 DOWNLOAD
+    download_x64=$(grep '^DOWNLOAD_x86_64=' "$normalized_file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
+    if [[ -n "$download_x64" ]]; then
+        if [[ $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
+            # we skip for unsupported or untested arch
+            sum64=$(download_file ${download_x64})
+            sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$normalized_file"
+        fi
+    fi
+
+    hf=$(cat $normalized_file)
+    echo "Updated hint file: $normalized_file"
+    echo "=========================================="
+    echo -n "$hf"
+    echo; echo "=========================================="
+}
+
+# Clean .bak files from HINT_DIR
+clean_bak_files() {
+    if [[ ! -d "$HINT_DIR" ]]; then
+        echo "Error: Hint directory does not exist: $HINT_DIR" >&2
+        exit 2
+    fi
+
+    local count=0
+    for bakfile in "$HINT_DIR"/*.bak; do
+        if [[ -f "$bakfile" ]]; then
+            rm "$bakfile"
+            count=$((count + 1))
+        fi
+    done
+
+    echo "Removed $count .bak file(s) from $HINT_DIR"
+}
+
+# Main function
+main() {
+    # Parse command line arguments directly
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --version|-v)
+                VERSION="$2"
+                shift 2
+                ;;
+            --hintfile|-f)
+                HINT_FILE="$2"
+                shift 2
+                ;;
+            --new|-n)
+                NEW_HINT_FILE="$2"
+                shift 2
+                ;;
+            --list|-l)
+                COMMAND="list"
+                shift
+                ;;
+            --clean|-c)
+                COMMAND="clean"
+                shift
+                ;;
+            --help|-h)
+                COMMAND="help"
+                shift
+                ;;
+            *)
+                echo "Unknown option: $1" >&2
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$COMMAND" ]]; then
+        # Default to update hint file if VERSION and HINT_FILE are provided
+        if [[ -n "$VERSION" && -n "$HINT_FILE" ]]; then
+            COMMAND="update"
+        elif [[ -n "$NEW_HINT_FILE" ]]; then
+            COMMAND="new"
+        fi
+    fi
+
+    case "$COMMAND" in
+        help)
+            show_help
+            ;;
+        list)
+            list_hint_files
+            ;;
+        clean)
+            clean_bak_files
+            ;;
+        update)
+            check_wget
+            update_hint_file "$HINT_FILE" "$VERSION"
+            ;;
+        new)
+            create_new_hint_file "$NEW_HINT_FILE"
+            ;;
+        *)
+            echo "Error: Unknown command: $COMMAND" >&2
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
