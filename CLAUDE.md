@@ -26,7 +26,10 @@ bash mkhint --help
 bash mkhint --list
 bash mkhint --version 2.0.1 --hintfile mypackage
 bash mkhint --version 1.2.3 --new mypackage
-bash mkhint --new mypackage   # empty hint, no version
+bash mkhint --new mypackage            # empty hint, no version
+bash mkhint --version 2.0.1 --hintfile mypackage --no-dl   # skip downloads, add NODOWNLOAD=yes
+bash mkhint --new mypackage --no-dl    # create hint with NODOWNLOAD=yes
+bash mkhint --delete mypackage
 bash mkhint --clean
 ```
 
@@ -37,6 +40,8 @@ No test suite exists. Test manually against real `REPO_DIR`/`HINT_DIR` or with m
 - `--hintfile` update: backs up to `.bak`, replaces old version string globally via `sed`, re-downloads both URLs to recalculate MD5 checksums. Skips download if value is `UNSUPPORTED` or `UNTESTED`.
 - `--new` with existing `.info`: copies `.info` as template, strips `PRGNAM`, `HOMEPAGE`, `MAINTAINER`, `EMAIL`, comments out `REQUIRES`, sets `ARCH="x86_64"`.
 - `--new` when hint already exists: backs up old, creates empty skeleton.
+- `--no-dl` / `-N`: skips all downloads; inserts `NODOWNLOAD=yes` after `MD5SUM_x86_64=` line. Works with `--hintfile` or `--new`. Error if used alone.
+- `--delete` / `-d`: removes hint file and `.bak` if present. Accepts multiple package names. Exits 2 on first missing file.
 - Downloads go to `/tmp/mkhint/download` (single shared temp file, deleted after md5 calculation).
 
 ## Exit Codes

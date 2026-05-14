@@ -8,7 +8,7 @@ _mkhintfile_completions() {
     repo_dir="/var/lib/sbopkg/SBo-danix"
     hint_dir="/etc/slackrepo/SBo-danix/hintfiles"
 
-    local all_flags="--version --hintfile --new --list --clean --delete --help"
+    local all_flags="--version --hintfile --new --list --clean --delete --no-dl --help"
 
     case "$prev" in
         --new|-n)
@@ -34,4 +34,4 @@ _mkhintfile_completions() {
     esac
 }
 
-complete -F _mkhintfile_completions mkhintfile.sh mkhintfile
+complete -F _mkhintfile_completions mkhint.sh mkhint

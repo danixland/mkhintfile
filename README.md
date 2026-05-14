@@ -21,8 +21,8 @@ sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
 Edit the paths at the top of mkhint to match your setup (lines 16–17):
 
 ```bash
-REPO_DIR="/var/lib/sbopkg/SBo-danix"   # Repository containing .info files
-HINT_DIR="/tmp/hintdir"                 # Directory where .hint files are stored
+REPO_DIR="/var/lib/sbopkg/SBo-danix/"      # Repository containing .info files
+HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"  # Directory where .hint files are stored
 ```
 
 ## Usage
@@ -32,39 +32,70 @@ HINT_DIR="/tmp/hintdir"                 # Directory where .hint files are stored
 Updates the package version, downloads the archive, and recalculates the MD5 checksums:
 
 ```bash
-mkhintfile --version 2.0.1 --hintfile mypackage
+mkhint --version 2.0.1 --hintfile mypackage
 ```
 
-This replaces the old version with 2.0.1 in mypackage.hint and re-downloads the URLs from DOWNLOAD and DOWNLOAD_x86_64 to update MD5SUM and MD5SUM_x86_64.
+Replaces the old version with 2.0.1 in mypackage.hint and re-downloads the URLs from DOWNLOAD and DOWNLOAD_x86_64 to update MD5SUM and MD5SUM_x86_64.
+
+### Update without downloading
+
+Updates the version string and adds `NODOWNLOAD=yes` to skip checksum verification in slackrepo:
+
+```bash
+mkhint --version 2.0.1 --hintfile mypackage --no-dl
+```
 
 ### Create a new hint file from .info
 
 Generates a new hint file from the corresponding repository .info file:
 
 ```bash
-mkhintfile --version 1.2.3 --new mypackage
+mkhint --version 1.2.3 --new mypackage
 ```
 
 The .info file is copied as a template, unwanted variables (PRGNAM, HOMEPAGE, MAINTAINER, EMAIL) are removed, and ARCH is set to x86_64.
+
+### Create a new hint file with NODOWNLOAD
+
+```bash
+mkhint --new mypackage --no-dl
+```
 
 ### Create an empty hint file
 
 Creates a fresh hint file with empty variables:
 
 ```bash
-mkhintfile --new mypackage
+mkhint --new mypackage
 ```
 
 ### List hint files
 
 ```bash
-mkhintfile --list
+mkhint --list
+```
+
+### Delete a hint file
+
+Removes the hint file and its .bak backup if present:
+
+```bash
+mkhint --delete mypackage
+mkhint --delete pkg1 pkg2 pkg3
+```
+
+### Clean backup files
+
+Removes all .bak files from HINT_DIR:
+
+```bash
+mkhint --clean
 ```
 
 ### Help
 
 ```bash
-mkhintfile --help
+mkhint --help
 ```
 
 ## Exit Codes
@@ -83,9 +114,10 @@ mkhintfile --help
 - MD5SUM - MD5 checksum of the generic archive
 - DOWNLOAD_x86_64 - Download URL (x86_64 specific)
 - MD5SUM_x86_64 - MD5 checksum of the x86_64 archive
+- NODOWNLOAD - Set to `yes` to skip download/checksum verification in slackrepo
 
 ## Notes
 
 - Old versions of hint files are backed up with a .bak extension before being modified.
 - If a download URL is set to UNSUPPORTED or UNTESTED, the link is skipped during update.
-- Bash completion for -f/--hintfile and -n/--new autocompletes package names from their respective directories.
+- Bash completion for -f/--hintfile, -n/--new, and -d/--delete autocompletes package names from their respective directories.

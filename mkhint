@@ -9,6 +9,8 @@
 #   ./mkhint --list                               List hint files
 #   ./mkhint --clean                              Remove .bak files from HINT_DIR
 #   ./mkhint --delete FILE                        Delete a hint file (and .bak if present)
+#   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
+#   ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
 #   ./mkhint --help                               Show this help
 
 set -e
@@ -29,6 +31,7 @@ HINT_FILE=""
 NEW_HINT_FILE=""
 DELETE_HINT_FILES=()
 COMMAND=""
+NO_DL=0
 
 # Show help message
 show_help() {
@@ -41,6 +44,8 @@ Usage:
   ./mkhint --new FILE                           Create new hint file (no version)
   ./mkhint --list                               List hint files
   ./mkhint --clean                              Remove .bak files from HINT_DIR
+  ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
+  ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
   ./mkhint --help                               Show this help
 
 Options:
@@ -50,6 +55,7 @@ Options:
   --list, -l               List all hint files in the default directory
   --clean, -c              Remove all .bak files from HINT_DIR
   --delete, -d FILE        Delete a hint file (and .bak if present)
+  --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
   --help, -h               Show this help message
 
 Hint files are stored in: $HINT_DIR
@@ -168,6 +174,10 @@ create_new_hint_file() {
                 echo 'ARCH="x86_64"' >> $normalized_file
             fi
 
+            if [[ $NO_DL -eq 1 ]]; then
+                add_nodownload "$normalized_file"
+            fi
+
             echo "generated $normalized_file from $(basename $info)."
             echo "Check variables before using."
         fi
@@ -184,9 +194,20 @@ MD5SUM=""
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 EOF
+        if [[ $NO_DL -eq 1 ]]; then
+            sed -i '/^MD5SUM_x86_64=/a NODOWNLOAD=yes' "$normalized_file"
+        fi
 
         echo "Created new hint file [EMPTY]: $normalized_file"
 
+    fi
+}
+
+# Add NODOWNLOAD=yes after MD5SUM_x86_64 line if not already present
+add_nodownload() {
+    local file="$1"
+    if ! grep -q '^NODOWNLOAD=' "$file"; then
+        sed -i '/^MD5SUM_x86_64=/a NODOWNLOAD=yes' "$file"
     fi
 }
 
@@ -220,22 +241,23 @@ update_hint_file() {
     # Use sed for global replacement of OLD_VERSION in all variables
     sed -i "s/${old_version}/${new_version}/g" "$normalized_file"
 
-    download=$(grep '^DOWNLOAD=' "$normalized_file" | sed 's/DOWNLOAD="//;s/"$//')
-    if [[ -n "$download" ]]; then
-        if [[ $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
-            # we skip for unsupported or untested arch
-            sum=$(download_file ${download})
-            sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$normalized_file"
+    if [[ $NO_DL -eq 1 ]]; then
+        add_nodownload "$normalized_file"
+    else
+        download=$(grep '^DOWNLOAD=' "$normalized_file" | sed 's/DOWNLOAD="//;s/"$//')
+        if [[ -n "$download" ]]; then
+            if [[ $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
+                sum=$(download_file ${download})
+                sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$normalized_file"
+            fi
         fi
-    fi
 
-    # we should repeat the check for x86_64 DOWNLOAD
-    download_x64=$(grep '^DOWNLOAD_x86_64=' "$normalized_file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
-    if [[ -n "$download_x64" ]]; then
-        if [[ $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
-            # we skip for unsupported or untested arch
-            sum64=$(download_file ${download_x64})
-            sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$normalized_file"
+        download_x64=$(grep '^DOWNLOAD_x86_64=' "$normalized_file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
+        if [[ -n "$download_x64" ]]; then
+            if [[ $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
+                sum64=$(download_file ${download_x64})
+                sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$normalized_file"
+            fi
         fi
     fi
 
@@ -322,6 +344,10 @@ main() {
                     shift
                 done
                 ;;
+            --no-dl|-N)
+                NO_DL=1
+                shift
+                ;;
             --help|-h)
                 COMMAND="help"
                 shift
@@ -345,6 +371,11 @@ main() {
         fi
     fi
 
+    if [[ $NO_DL -eq 1 && -z "$HINT_FILE" && -z "$NEW_HINT_FILE" ]]; then
+        echo "Error: --no-dl requires --hintfile or --new" >&2
+        exit 1
+    fi
+
     case "$COMMAND" in
         help)
             show_help
@@ -356,7 +387,9 @@ main() {
             clean_bak_files
             ;;
         update)
-            check_wget
+            if [[ $NO_DL -eq 0 ]]; then
+                check_wget
+            fi
             update_hint_file "$HINT_FILE" "$VERSION"
             ;;
         new)
