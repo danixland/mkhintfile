@@ -314,8 +314,13 @@ clean_bak_files() {
 
 # Main function
 main() {
-    # Parse command line arguments directly
-    while [[ $# -gt 0 ]]; do
+    local parsed
+    parsed=$(getopt -o v:f:n:lcdNh \
+        --long version:,hintfile:,new:,list,clean,delete,no-dl,help \
+        -n 'mkhint' -- "$@") || { show_help; exit 1; }
+    eval set -- "$parsed"
+
+    while true; do
         case "$1" in
             --version|-v)
                 VERSION="$2"
@@ -338,11 +343,8 @@ main() {
                 shift
                 ;;
             --delete|-d)
+                COMMAND="delete"
                 shift
-                while [[ $# -gt 0 && "$1" != -* ]]; do
-                    DELETE_HINT_FILES+=("$1")
-                    shift
-                done
                 ;;
             --no-dl|-N)
                 NO_DL=1
@@ -352,12 +354,22 @@ main() {
                 COMMAND="help"
                 shift
                 ;;
+            --)
+                shift
+                break
+                ;;
             *)
                 echo "Unknown option: $1" >&2
                 show_help
                 exit 1
                 ;;
         esac
+    done
+
+    # Collect remaining positional args as delete targets
+    while [[ $# -gt 0 ]]; do
+        DELETE_HINT_FILES+=("$1")
+        shift
     done
 
     if [[ -z "$COMMAND" ]]; then
