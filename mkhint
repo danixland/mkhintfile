@@ -156,7 +156,7 @@ create_new_hint_file() {
 
     # Check if file exists
     if [[ ! -f "$normalized_file" ]]; then
-        # the hint file we want to create doesn't exists, so we can check 
+        # the hint file we want to create doesn't exists, so we can check
         # the sbo repository for a .info file and use that as hint
         if [[ -n $info ]]; then
             cp $info $normalized_file
@@ -174,6 +174,13 @@ create_new_hint_file() {
                 echo 'ARCH="x86_64"' >> $normalized_file
             fi
 
+            if [[ -n "$VERSION" ]]; then
+                local old_version
+                old_version=$(grep '^VERSION=' "$normalized_file" | sed 's/VERSION="//;s/"$//')
+                sed -i "s/${old_version}/${VERSION}/g" "$normalized_file"
+                update_checksums "$normalized_file"
+            fi
+
             if [[ $NO_DL -eq 1 ]]; then
                 add_nodownload "$normalized_file"
             fi
@@ -187,7 +194,7 @@ create_new_hint_file() {
         echo "Backed up to: ${normalized_file}.bak" >&2
         # Create new hint file with empty variables
         cat > "$normalized_file" <<EOF
-VERSION=""
+VERSION="${VERSION}"
 ARCH="x86_64"
 DOWNLOAD=""
 MD5SUM=""
@@ -195,7 +202,7 @@ DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 EOF
         if [[ $NO_DL -eq 1 ]]; then
-            sed -i '/^MD5SUM_x86_64=/a NODOWNLOAD=yes' "$normalized_file"
+            add_nodownload "$normalized_file"
         fi
 
         echo "Created new hint file [EMPTY]: $normalized_file"
@@ -208,6 +215,27 @@ add_nodownload() {
     local file="$1"
     if ! grep -q '^NODOWNLOAD=' "$file"; then
         sed -i '/^MD5SUM_x86_64=/a NODOWNLOAD=yes' "$file"
+    fi
+}
+
+# Download files and update MD5SUM/MD5SUM_x86_64 in hint file
+update_checksums() {
+    local file="$1"
+
+    local download
+    download=$(grep '^DOWNLOAD=' "$file" | sed 's/DOWNLOAD="//;s/"$//')
+    if [[ -n "$download" && $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
+        local sum
+        sum=$(download_file "$download")
+        sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$file"
+    fi
+
+    local download_x64
+    download_x64=$(grep '^DOWNLOAD_x86_64=' "$file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
+    if [[ -n "$download_x64" && $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
+        local sum64
+        sum64=$(download_file "$download_x64")
+        sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$file"
     fi
 }
 
@@ -241,21 +269,7 @@ update_hint_file() {
     # Use sed for global replacement of OLD_VERSION in all variables
     sed -i "s/${old_version}/${new_version}/g" "$normalized_file"
 
-    download=$(grep '^DOWNLOAD=' "$normalized_file" | sed 's/DOWNLOAD="//;s/"$//')
-    if [[ -n "$download" ]]; then
-        if [[ $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
-            sum=$(download_file ${download})
-            sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$normalized_file"
-        fi
-    fi
-
-    download_x64=$(grep '^DOWNLOAD_x86_64=' "$normalized_file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
-    if [[ -n "$download_x64" ]]; then
-        if [[ $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
-            sum64=$(download_file ${download_x64})
-            sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$normalized_file"
-        fi
-    fi
+    update_checksums "$normalized_file"
 
     if [[ $NO_DL -eq 1 ]]; then
         add_nodownload "$normalized_file"
@@ -403,6 +417,9 @@ main() {
             update_hint_file "$HINT_FILE" "$VERSION"
             ;;
         new)
+            if [[ -n "$VERSION" ]]; then
+                check_wget
+            fi
             create_new_hint_file "$NEW_HINT_FILE"
             ;;
         delete)
