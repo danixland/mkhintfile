@@ -241,24 +241,24 @@ update_hint_file() {
     # Use sed for global replacement of OLD_VERSION in all variables
     sed -i "s/${old_version}/${new_version}/g" "$normalized_file"
 
+    download=$(grep '^DOWNLOAD=' "$normalized_file" | sed 's/DOWNLOAD="//;s/"$//')
+    if [[ -n "$download" ]]; then
+        if [[ $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
+            sum=$(download_file ${download})
+            sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$normalized_file"
+        fi
+    fi
+
+    download_x64=$(grep '^DOWNLOAD_x86_64=' "$normalized_file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
+    if [[ -n "$download_x64" ]]; then
+        if [[ $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
+            sum64=$(download_file ${download_x64})
+            sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$normalized_file"
+        fi
+    fi
+
     if [[ $NO_DL -eq 1 ]]; then
         add_nodownload "$normalized_file"
-    else
-        download=$(grep '^DOWNLOAD=' "$normalized_file" | sed 's/DOWNLOAD="//;s/"$//')
-        if [[ -n "$download" ]]; then
-            if [[ $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
-                sum=$(download_file ${download})
-                sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$normalized_file"
-            fi
-        fi
-
-        download_x64=$(grep '^DOWNLOAD_x86_64=' "$normalized_file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
-        if [[ -n "$download_x64" ]]; then
-            if [[ $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
-                sum64=$(download_file ${download_x64})
-                sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$normalized_file"
-            fi
-        fi
     fi
 
     hf=$(cat $normalized_file)
@@ -399,9 +399,7 @@ main() {
             clean_bak_files
             ;;
         update)
-            if [[ $NO_DL -eq 0 ]]; then
-                check_wget
-            fi
+            check_wget
             update_hint_file "$HINT_FILE" "$VERSION"
             ;;
         new)
