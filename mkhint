@@ -218,25 +218,147 @@ add_nodownload() {
     fi
 }
 
+# Parse multiline variable value (handles \ continuation lines)
+# Prints each whitespace-separated token on its own line
+parse_multiline_var() {
+    local varname="$1"
+    local file="$2"
+    # Join continuation lines, strip variable name and quotes, print one token per line
+    awk -v var="${varname}" '
+        BEGIN { found=0; buf="" }
+        !found && $0 ~ "^"var"=\"" {
+            found=1
+            buf=$0
+            sub("^"var"=\"", "", buf)
+            if (buf !~ /\\[[:space:]]*$/) {
+                gsub(/"[[:space:]]*$/, "", buf)
+                n=split(buf, arr, /[[:space:]]+/)
+                for (k=1;k<=n;k++) if(arr[k]!="") print arr[k]
+                found=0; buf=""
+            } else {
+                gsub(/\\[[:space:]]*$/, "", buf)
+            }
+            next
+        }
+        found {
+            if ($0 ~ /\\[[:space:]]*$/) {
+                line=$0; gsub(/\\[[:space:]]*$/, "", line)
+                buf=buf" "line
+            } else {
+                line=$0; gsub(/"[[:space:]]*$/, "", line)
+                buf=buf" "line
+                n=split(buf, arr, /[[:space:]]+/)
+                for (k=1;k<=n;k++) if(arr[k]!="") print arr[k]
+                found=0; buf=""
+            }
+        }
+    ' "$file"
+}
+
+# Prompt user for updated continuation URLs; returns updated URLs via nameref array
+# First URL is always kept as-is (already updated by version sed before this call)
+prompt_continuation_urls() {
+    local -n _urls="$1"   # nameref: array of current URLs
+    local varname="$2"
+
+    local i
+    for (( i=1; i<${#_urls[@]}; i++ )); do
+        local current="${_urls[$i]}"
+        echo ""
+        echo "  ${varname} line $((i+1)) (current): $current"
+        read -r -p "  New URL (leave blank to keep): " new_url
+        if [[ -n "$new_url" ]]; then
+            _urls[$i]="$new_url"
+        fi
+    done
+}
+
+# Build multiline variable string for writing back to file
+# Usage: build_multiline_value urls_array -> prints quoted multiline value
+build_multiline_value() {
+    local -n _arr="$1"
+    local count=${#_arr[@]}
+    local i
+    for (( i=0; i<count; i++ )); do
+        if (( i == 0 )); then
+            printf '"%s' "${_arr[$i]}"
+        else
+            printf ' \\\n    %s' "${_arr[$i]}"
+        fi
+    done
+    printf '"\n'
+}
+
 # Download files and update MD5SUM/MD5SUM_x86_64 in hint file
 update_checksums() {
     local file="$1"
 
-    local download
-    download=$(grep '^DOWNLOAD=' "$file" | sed 's/DOWNLOAD="//;s/"$//')
-    if [[ -n "$download" && $download != "UNSUPPORTED" && $download != "UNTESTED" ]]; then
-        local sum
-        sum=$(download_file "$download")
-        sed -i "/^MD5SUM=/s/MD5SUM=\"[^\"]*\"/MD5SUM=\"$sum\"/" "$file"
+    _process_download_var "DOWNLOAD" "MD5SUM" "$file"
+    _process_download_var "DOWNLOAD_x86_64" "MD5SUM_x86_64" "$file"
+}
+
+# Process one DOWNLOAD/MD5SUM variable pair in a hint file
+_process_download_var() {
+    local dl_var="$1"
+    local md5_var="$2"
+    local file="$3"
+
+    # Read current URLs into array
+    mapfile -t urls < <(parse_multiline_var "$dl_var" "$file")
+
+    [[ ${#urls[@]} -eq 0 ]] && return
+    [[ "${urls[0]}" == "UNSUPPORTED" || "${urls[0]}" == "UNTESTED" ]] && return
+
+    # Read current md5sums into array (parallel to urls)
+    mapfile -t md5s < <(parse_multiline_var "$md5_var" "$file")
+
+    # Save original URLs for change detection after prompt
+    local orig_urls=("${urls[@]}")
+
+    # Prompt user to update continuation URLs if present
+    if (( ${#urls[@]} > 1 )); then
+        echo ""
+        echo "Multiline ${dl_var} detected in $(basename "$file")."
+        prompt_continuation_urls urls "$dl_var"
     fi
 
-    local download_x64
-    download_x64=$(grep '^DOWNLOAD_x86_64=' "$file" | sed 's/DOWNLOAD_x86_64="//;s/"$//')
-    if [[ -n "$download_x64" && $download_x64 != "UNSUPPORTED" && $download_x64 != "UNTESTED" ]]; then
-        local sum64
-        sum64=$(download_file "$download_x64")
-        sed -i "/^MD5SUM_x86_64=/s/MD5SUM_x86_64=\"[^\"]*\"/MD5SUM_x86_64=\"$sum64\"/" "$file"
-    fi
+    # Download and calculate md5 for each URL
+    local new_md5s=()
+    local i
+    for (( i=0; i<${#urls[@]}; i++ )); do
+        local url="${urls[$i]}"
+        if (( i == 0 )); then
+            # Always re-download first URL
+            echo "Downloading: $url"
+            new_md5s+=( "$(download_file "$url")" )
+        else
+            # Only re-download if URL changed from original
+            if [[ "$url" != "${orig_urls[$i]}" ]]; then
+                echo "Downloading (updated): $url"
+                new_md5s+=( "$(download_file "$url")" )
+            else
+                echo "Keeping existing md5 for: $url"
+                new_md5s+=( "${md5s[$i]}" )
+            fi
+        fi
+    done
+
+    # Rebuild and write back DOWNLOAD variable (may have updated continuation URLs)
+    local new_dl_value
+    new_dl_value=$(build_multiline_value urls)
+    # Strip surrounding quotes — perl wraps them in the substitution
+    new_dl_value="${new_dl_value#\"}"
+    new_dl_value="${new_dl_value%\"}"
+    perl -i -0pe 'BEGIN{$v=shift} s|^'"${dl_var}"'="[^"]*(?:\\\n[^"]*)*"|'"${dl_var}"'="$v"|m' \
+        "$new_dl_value" "$file"
+
+    # Rebuild and write back MD5SUM variable
+    local new_md5_value
+    new_md5_value=$(build_multiline_value new_md5s)
+    new_md5_value="${new_md5_value#\"}"
+    new_md5_value="${new_md5_value%\"}"
+    perl -i -0pe 'BEGIN{$v=shift} s|^'"${md5_var}"'="[^"]*(?:\\\n[^"]*)*"|'"${md5_var}"'="$v"|m' \
+        "$new_md5_value" "$file"
 }
 
 # Update existing hint file
