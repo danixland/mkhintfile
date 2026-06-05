@@ -26,7 +26,21 @@ _mkhintfile_completions() {
             COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
             ;;
         --version|-v)
-            # no completion, raw text
+            local pkg="" i
+            for (( i=1; i<${#COMP_WORDS[@]}-1; i++ )); do
+                if [[ "${COMP_WORDS[i]}" == "--hintfile" || "${COMP_WORDS[i]}" == "-f" ]]; then
+                    pkg="${COMP_WORDS[i+1]}"
+                    break
+                fi
+            done
+            if [[ -n "$pkg" ]]; then
+                local hint_file="$hint_dir/${pkg}.hint"
+                if [[ -f "$hint_file" ]]; then
+                    local ver
+                    ver=$(grep -m1 '^VERSION=' "$hint_file" | cut -d= -f2 | tr -d '"')
+                    [[ -n "$ver" ]] && COMPREPLY=($(compgen -W "$ver" -- "$cur"))
+                fi
+            fi
             ;;
         *)
             COMPREPLY=($(compgen -W "$all_flags" -- "$cur"))
