@@ -585,6 +585,83 @@ EOF
 run_mkhint -C < <(printf 'Y\nn\n')
 assert_contains "scan-all updated curl" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
 
+# ── T29: --check missing section, accept populate → section added, run stops ───
+echo ""
+echo "T29: --check missing section, accept populate → github section appended, no update"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": {} }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/ghpkg.hint" << 'EOF'
+VERSION="1.0.0"
+ARCH="x86_64"
+DOWNLOAD="https://github.com/someowner/ghpkg/archive/v1.0.0/ghpkg-1.0.0.tar.gz"
+MD5SUM="11111111111111111111111111111111"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+out=$(run_mkhint -C ghpkg < <(printf 'Y\n') 2>&1)
+assert_contains "ghpkg section appended"     "$MOCK_BASE/nvchecker.toml" '\[ghpkg\]'
+assert_contains "github source detected"     "$MOCK_BASE/nvchecker.toml" 'source = "github"'
+echo "$out" | grep -q "Review .*re-run" \
+    && { echo "  PASS: review/re-run message shown"; (( PASS++ )); } \
+    || { echo "  FAIL: review message missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T29 review msg"); }
+assert_contains "ghpkg hint version unchanged" "$MOCK_HINT/ghpkg.hint" 'VERSION="1.0.0"'
+
+# ── T30: --check missing section, decline populate → no section added ──────────
+echo ""
+echo "T30: --check missing section, decline populate → nothing added"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": {} }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/ghpkg.hint" << 'EOF'
+VERSION="1.0.0"
+ARCH="x86_64"
+DOWNLOAD="https://github.com/someowner/ghpkg/archive/v1.0.0/ghpkg-1.0.0.tar.gz"
+MD5SUM="11111111111111111111111111111111"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -C ghpkg < <(printf 'n\n') >/dev/null 2>&1
+assert_not_contains "no ghpkg section after decline" "$MOCK_BASE/nvchecker.toml" '\[ghpkg\]'
+
+# ── T31: --check missing section, no .info in repo, accept → skipped, no section
+echo ""
+echo "T31: --check missing section but no .info → skipped, no section added"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": {} }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/orphanpkg.hint" << 'EOF'
+VERSION="3.0.0"
+ARCH="x86_64"
+DOWNLOAD="https://example.com/orphanpkg-3.0.0.tar.gz"
+MD5SUM="44444444444444444444444444444444"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+out=$(run_mkhint -C orphanpkg < <(printf 'Y\n') 2>&1)
+echo "$out" | grep -q "no .info found" \
+    && { echo "  PASS: no .info reported"; (( PASS++ )); } \
+    || { echo "  FAIL: 'no .info found' not in output"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T31 no info"); }
+assert_not_contains "no orphanpkg section added" "$MOCK_BASE/nvchecker.toml" '\[orphanpkg\]'
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
