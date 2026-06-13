@@ -155,6 +155,11 @@ _nvchecker_newver_path() {
     [[ -z "$path" ]] && return 1
     # expand a leading ~ to $HOME
     path="${path/#\~/$HOME}"
+    # nvchecker resolves a relative keyfile path against the config file's
+    # directory (not the CWD), so do the same here.
+    if [[ "$path" != /* ]]; then
+        path="$(dirname "$NVCHECKER_CONFIG")/$path"
+    fi
     printf '%s\n' "$path"
 }
 

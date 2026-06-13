@@ -718,6 +718,32 @@ echo "$out" | grep -q "yt-dlp: no nvchecker section" \
     && { echo "  FAIL: quoted section wrongly flagged missing"; (( FAIL++ )); ERRORS+=("T34 false missing"); } \
     || { echo "  PASS: not flagged as missing section"; (( PASS++ )); }
 
+# ── T35: relative newver path resolved against config dir, not CWD ─────────────
+echo ""
+echo "T35: relative newver path in config → resolved against config dir"
+# config uses a RELATIVE newver path (as nvchecker writes by default).
+# keyfile lives beside the config in $MOCK_BASE. The run happens with CWD
+# elsewhere (the repo dir), so a CWD-relative read would fail to find it.
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "old_ver.json"
+newver = "new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -C curl < <(printf 'Y\nn\n')
+assert_contains "relative-path keyfile found → curl updated" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
