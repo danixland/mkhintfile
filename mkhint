@@ -400,6 +400,36 @@ build_multiline_value() {
     printf '"\n'
 }
 
+# Query nvchecker for a package's latest version and let the user accept or
+# override it. Echoes the chosen version on stdout. Returns non-zero if the
+# user declines or no version is available (caller decides what to do).
+suggest_version() {
+    local pkg="$1"
+
+    # Refresh nvchecker results (stderr only; keep stdout clean for the echo)
+    nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+
+    local latest
+    latest=$(nvchecker_latest "$pkg") || {
+        echo "Error: no nvchecker result for '$pkg'. Add/fix its [${pkg}] section in $NVCHECKER_CONFIG" >&2
+        return 1
+    }
+
+    # Read current version from the hint file (best effort, for display)
+    local hintpath="${HINT_DIR%/}/${pkg}.hint"
+    local current=""
+    [[ -f "$hintpath" ]] && current=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
+
+    local answer
+    read -r -p "current ${current:-?}, latest ${latest}. Use ${latest}? [Y/n] (or type a version) " answer >&2
+    answer="${answer:-Y}"
+    case "$answer" in
+        [Yy]) printf '%s\n' "$latest" ;;
+        [Nn]) return 1 ;;
+        *)    printf '%s\n' "$answer" ;;
+    esac
+}
+
 # Download files and update MD5SUM/MD5SUM_x86_64 in hint file
 update_checksums() {
     local file="$1"
@@ -632,7 +662,7 @@ main() {
 
     if [[ -z "$COMMAND" ]]; then
         # Default to update hint file if VERSION and HINT_FILE are provided
-        if [[ -n "$VERSION" && -n "$HINT_FILE" ]]; then
+        if [[ -n "$HINT_FILE" ]]; then
             COMMAND="update"
         elif [[ -n "$NEW_HINT_FILE" ]]; then
             COMMAND="new"
@@ -658,7 +688,15 @@ main() {
             ;;
         update)
             check_wget
+            if [[ -z "$VERSION" ]]; then
+                check_nvchecker
+                VERSION=$(suggest_version "$HINT_FILE") || { echo "Aborted." >&2; exit 0; }
+                check_nvchecker_take=1
+            fi
             update_hint_file "$HINT_FILE" "$VERSION"
+            if [[ "${check_nvchecker_take:-0}" -eq 1 ]]; then
+                nvtake -c "$NVCHECKER_CONFIG" "$HINT_FILE" >&2 || true
+            fi
             prompt_slackrepo "$HINT_FILE"
             ;;
         new)
