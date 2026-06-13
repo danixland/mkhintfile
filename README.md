@@ -146,6 +146,8 @@ mkhint --check pkg1 pkg2          # check specific packages
 mkhint -C                         # short form
 ```
 
+If any scanned hint file has no nvchecker source configured, `--check` lists those packages and offers to populate `nvchecker.toml` for them in one prompt — auto-detecting github/pypi from the SBo `.info`, otherwise writing a commented stub to fill in. After populating, it asks you to review the file (fill any stubs) and re-run `mkhint -C`. Packages with no matching `.info` in the repository are skipped.
+
 ### Help
 
 ```bash

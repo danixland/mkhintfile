@@ -82,6 +82,11 @@ Test coverage:
 | T24 | `--check` all current — "all up to date", no slackrepo |
 | T25 | `--check` mixed — decline one / accept one |
 | T26 | `--check` with -v — mutually-exclusive error, exit 1 |
+| T27 | `--check` upstream older than hint — reported as `(?downgrade)` |
+| T28 | `--check` no args — scans entire HINT_DIR |
+| T29 | `--check` missing section, accept populate — github section appended, run stops, hint unchanged |
+| T30 | `--check` missing section, decline populate — nothing added |
+| T31 | `--check` missing section, no `.info` in repo — skipped, no section added |
 
 When adding new features, add a corresponding test case to `tests/mkhint_test.sh`.
 
@@ -91,7 +96,7 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 - `--new` with existing `.info`: copies `.info` as template, strips `PRGNAM`, `HOMEPAGE`, `MAINTAINER`, `EMAIL`, comments out `REQUIRES`, sets `ARCH="x86_64"`. Keeps `VERSION` from `.info`. If `-v` given, updates version string and recalculates checksums. Also appends an nvchecker `[section]` to the config, auto-detecting github/pypi source or providing a commented stub.
 - `--new` when hint already exists: backs up old, creates empty skeleton.
 - `--hintfile` with no `-v`: queries nvchecker for latest version, shows current vs. latest, prompts to accept/override/decline. After accepting, runs `nvtake` to sync nvchecker's keyfile.
-- `--check` / `-C`: runs nvchecker for all (or named) hints, reports outdated packages with current → latest versions, prompts per-package to update, applies updates with `nvtake`, then prompts single `slackrepo update` for all updated packages.
+- `--check` / `-C`: runs nvchecker for all (or named) hints, reports outdated packages with current → latest versions, prompts per-package to update, applies updates with `nvtake`, then prompts single `slackrepo update` for all updated packages. Hints with no `[pkg]` section in `nvchecker.toml` are collected and, after the scan, a single prompt offers to populate the config via `add_nvchecker_section` (github/pypi autodetect, else stub); on accept it prints a "review and re-run" message and stops the run without applying updates. Packages whose `.info` is not found in `REPO_DIR` are skipped.
 - `--no-dl` / `-N`: downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` after `MD5SUM_x86_64=`. Works with `--hintfile` or `--new`. Error if used alone.
 - `--delete` / `-d`: removes hint file and `.bak` if present. Accepts multiple package names. Exits 2 on first missing file.
 - Downloads go to `/tmp/mkhint/download` (single shared temp file, deleted after md5 calculation).
