@@ -8,7 +8,7 @@ _mkhintfile_completions() {
     repo_dir="/var/lib/sbopkg/SBo-danix"
     hint_dir="/etc/slackrepo/SBo-danix/hintfiles"
 
-    local all_flags="--version -v --hintfile -f --new -n --list -l --clean -c --delete -d --no-dl -N --help -h"
+    local all_flags="--version -v --hintfile -f --new -n --list -l --clean -c --check -C --delete -d --no-dl -N --help -h"
 
     case "$prev" in
         --new|-n)
@@ -18,7 +18,7 @@ _mkhintfile_completions() {
             done < <(find "$repo_dir" -mindepth 2 -maxdepth 2 -name "*.info" 2>/dev/null)
             COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
             ;;
-        --hintfile|-f|--delete|-d)
+        --hintfile|-f|--delete|-d|--check|-C)
             local -a words=()
             for f in "$hint_dir"/*.hint; do
                 [[ -f "$f" ]] && words+=("$(basename "${f%.hint}")")
