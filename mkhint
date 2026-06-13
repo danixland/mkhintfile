@@ -236,6 +236,7 @@ create_new_hint_file() {
 
             echo "generated $normalized_file from $(basename $info)."
             echo "Check variables before using."
+            add_nvchecker_section "${normalized_file%.hint}" "$info"
         fi
     else
         echo "Hint file exists: $normalized_file" >&2
