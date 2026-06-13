@@ -125,6 +125,23 @@ check_wget() {
     fi
 }
 
+# Validate nvchecker toolchain availability
+check_nvchecker() {
+    local missing=()
+    command -v nvchecker &> /dev/null || missing+=("nvchecker")
+    command -v nvtake   &> /dev/null || missing+=("nvtake")
+    command -v jq       &> /dev/null || missing+=("jq")
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "Error: required tool(s) not installed: ${missing[*]}" >&2
+        echo "Install nvchecker (provides nvchecker + nvtake) and jq." >&2
+        exit 4
+    fi
+    if [[ ! -f "$NVCHECKER_CONFIG" ]]; then
+        echo "Error: nvchecker config not found: $NVCHECKER_CONFIG" >&2
+        exit 2
+    fi
+}
+
 # download files
 download_file() {
     local url="$1"
