@@ -142,6 +142,34 @@ check_nvchecker() {
     fi
 }
 
+# Echo the newver-keyfile path declared in [__config__] of NVCHECKER_CONFIG
+_nvchecker_newver_path() {
+    # Grab the `newver = "..."` value; tolerate spaces around =
+    local line
+    line=$(grep -E '^[[:space:]]*newver[[:space:]]*=' "$NVCHECKER_CONFIG" | head -1)
+    [[ -z "$line" ]] && return 1
+    # extract the quoted path
+    local path
+    path=$(printf '%s\n' "$line" | sed -E 's/^[^"]*"([^"]*)".*/\1/')
+    [[ -z "$path" ]] && return 1
+    # expand a leading ~ to $HOME
+    path="${path/#\~/$HOME}"
+    printf '%s\n' "$path"
+}
+
+# Echo the latest version nvchecker found for a package, or return non-zero
+# Usage: latest=$(nvchecker_latest pkg) || handle "no version"
+nvchecker_latest() {
+    local pkg="$1"
+    local keyfile
+    keyfile=$(_nvchecker_newver_path) || return 1
+    [[ -f "$keyfile" ]] || return 1
+    local ver
+    ver=$(jq -r --arg p "$pkg" '.data[$p].version // empty' "$keyfile" 2>/dev/null)
+    [[ -z "$ver" ]] && return 1
+    printf '%s\n' "$ver"
+}
+
 # download files
 download_file() {
     local url="$1"
