@@ -6,9 +6,10 @@
 #   ./mkhint --version VERSION --hintfile FILE    Update existing hint file
 #   ./mkhint --version VERSION --new FILE         Create new hint file
 #   ./mkhint --new FILE                           Create new hint file (no version)
+#   ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
+#   ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
 #   ./mkhint --list                               List hint files
 #   ./mkhint --clean                              Remove .bak files from HINT_DIR
-#   ./mkhint --delete FILE                        Delete a hint file (and .bak if present)
 #   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
 #   ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
 #   ./mkhint --help                               Show this help
@@ -260,6 +261,13 @@ EOF
     fi
 }
 
+# Return 0 if NVCHECKER_CONFIG already has a [pkg] section
+_has_nvchecker_section() {
+    local pkg="$1"
+    [[ -f "$NVCHECKER_CONFIG" ]] || return 1
+    grep -qE "^\[${pkg}\][[:space:]]*$" "$NVCHECKER_CONFIG"
+}
+
 # Append an nvchecker [pkg] section to NVCHECKER_CONFIG, auto-detecting the
 # source from the package's .info DOWNLOAD/HOMEPAGE. No-op if section exists.
 add_nvchecker_section() {
@@ -271,7 +279,7 @@ add_nvchecker_section() {
     touch "$NVCHECKER_CONFIG"
 
     # Skip if section already present
-    if grep -qE "^\[${pkg}\][[:space:]]*$" "$NVCHECKER_CONFIG"; then
+    if _has_nvchecker_section "$pkg"; then
         echo "nvchecker: [${pkg}] already present in $NVCHECKER_CONFIG"
         return 0
     fi
