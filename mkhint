@@ -6,9 +6,10 @@
 #   ./mkhint --version VERSION --hintfile FILE    Update existing hint file
 #   ./mkhint --version VERSION --new FILE         Create new hint file
 #   ./mkhint --new FILE                           Create new hint file (no version)
+#   ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
+#   ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
 #   ./mkhint --list                               List hint files
 #   ./mkhint --clean                              Remove .bak files from HINT_DIR
-#   ./mkhint --delete FILE                        Delete a hint file (and .bak if present)
 #   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
 #   ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
 #   ./mkhint --help                               Show this help
@@ -19,6 +20,7 @@ set -e
 REPO_DIR="/var/lib/sbopkg/SBo-danix/"
 HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"
 TMP_DIR="/tmp/mkhint"
+NVCHECKER_CONFIG="$HOME/.config/nvchecker/nvchecker.toml"
 
 # create the temp dir if not existing
 if [[ ! -d $TMP_DIR ]]; then
@@ -42,6 +44,8 @@ Usage:
   ./mkhint --version VERSION --hintfile FILE    Update existing hint file
   ./mkhint --version VERSION --new FILE         Create new hint file
   ./mkhint --new FILE                           Create new hint file (no version)
+  ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
+  ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
   ./mkhint --list                               List hint files
   ./mkhint --clean                              Remove .bak files from HINT_DIR
   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
@@ -54,6 +58,7 @@ Options:
   --new, -n FILE           Create new hint file (required with --version or standalone)
   --list, -l               List all hint files in the default directory
   --clean, -c              Remove all .bak files from HINT_DIR
+  --check, -C [FILE...]    Check hints for upstream updates via nvchecker, update interactively
   --delete, -d FILE        Delete a hint file (and .bak if present)
   --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
   --help, -h               Show this help message
@@ -69,7 +74,7 @@ Exit codes:
   1 - Invalid arguments or missing required options
   2 - File not found
   3 - File already exists
-  4 - wget not available
+  4 - required tool not available (wget / nvchecker / nvtake / jq)
 EOF
 }
 
@@ -119,6 +124,56 @@ check_wget() {
         echo "Error: wget is not installed. Please install wget first." >&2
         exit 4
     fi
+}
+
+# Validate nvchecker toolchain availability
+check_nvchecker() {
+    local missing=()
+    command -v nvchecker &> /dev/null || missing+=("nvchecker")
+    command -v nvtake   &> /dev/null || missing+=("nvtake")
+    command -v jq       &> /dev/null || missing+=("jq")
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "Error: required tool(s) not installed: ${missing[*]}" >&2
+        echo "Install nvchecker (provides nvchecker + nvtake) and jq." >&2
+        exit 4
+    fi
+    if [[ ! -f "$NVCHECKER_CONFIG" ]]; then
+        echo "Error: nvchecker config not found: $NVCHECKER_CONFIG" >&2
+        exit 2
+    fi
+}
+
+# Echo the newver-keyfile path declared in [__config__] of NVCHECKER_CONFIG
+_nvchecker_newver_path() {
+    # Grab the `newver = "..."` value; tolerate spaces around =
+    local line
+    line=$(grep -E '^[[:space:]]*newver[[:space:]]*=' "$NVCHECKER_CONFIG" | head -1)
+    [[ -z "$line" ]] && return 1
+    # extract the quoted path
+    local path
+    path=$(printf '%s\n' "$line" | sed -E 's/^[^"]*"([^"]*)".*/\1/')
+    [[ -z "$path" ]] && return 1
+    # expand a leading ~ to $HOME
+    path="${path/#\~/$HOME}"
+    # nvchecker resolves a relative keyfile path against the config file's
+    # directory (not the CWD), so do the same here.
+    if [[ "$path" != /* ]]; then
+        path="$(dirname "$NVCHECKER_CONFIG")/$path"
+    fi
+    printf '%s\n' "$path"
+}
+
+# Echo the latest version nvchecker found for a package, or return non-zero
+# Usage: latest=$(nvchecker_latest pkg) || handle "no version"
+nvchecker_latest() {
+    local pkg="$1"
+    local keyfile
+    keyfile=$(_nvchecker_newver_path) || return 1
+    [[ -f "$keyfile" ]] || return 1
+    local ver
+    ver=$(jq -r --arg p "$pkg" '.data[$p].version // empty' "$keyfile" 2>/dev/null)
+    [[ -z "$ver" ]] && return 1
+    printf '%s\n' "$ver"
 }
 
 # download files
@@ -187,6 +242,7 @@ create_new_hint_file() {
 
             echo "generated $normalized_file from $(basename $info)."
             echo "Check variables before using."
+            add_nvchecker_section "${normalized_file%.hint}" "$info"
         fi
     else
         echo "Hint file exists: $normalized_file" >&2
@@ -208,6 +264,91 @@ EOF
         echo "Created new hint file [EMPTY]: $normalized_file"
 
     fi
+}
+
+# Emit the TOML section label for a package: bare if the name is a valid
+# bare key ([A-Za-z0-9_] only), otherwise double-quoted. nvchecker (and TOML)
+# require quoting for names containing '.', '-', etc.
+_nvchecker_label() {
+    local pkg="$1"
+    if [[ "$pkg" =~ ^[A-Za-z0-9_]+$ ]]; then
+        printf '[%s]' "$pkg"
+    else
+        printf '["%s"]' "$pkg"
+    fi
+}
+
+# Return 0 if NVCHECKER_CONFIG already has a section for pkg (bare or quoted)
+_has_nvchecker_section() {
+    local pkg="$1"
+    [[ -f "$NVCHECKER_CONFIG" ]] || return 1
+    local label; label=$(_nvchecker_label "$pkg")
+    # fixed-string match of the exact label at line start, trailing space allowed
+    grep -qE "^$(printf '%s' "$label" | sed 's/[][\.*^$/]/\\&/g')[[:space:]]*$" \
+        "$NVCHECKER_CONFIG"
+}
+
+# Append an nvchecker [pkg] section to NVCHECKER_CONFIG, auto-detecting the
+# source from the package's .info DOWNLOAD/HOMEPAGE. No-op if section exists.
+add_nvchecker_section() {
+    local pkg="$1"
+    local info_file="$2"
+
+    # Ensure config dir/file exist (do not create __config__; user owns that)
+    mkdir -p "$(dirname "$NVCHECKER_CONFIG")"
+    touch "$NVCHECKER_CONFIG"
+
+    local label; label=$(_nvchecker_label "$pkg")
+
+    # Skip if section already present
+    if _has_nvchecker_section "$pkg"; then
+        echo "nvchecker: ${label} already present in $NVCHECKER_CONFIG"
+        return 0
+    fi
+
+    local download="" homepage=""
+    if [[ -f "$info_file" ]]; then
+        download=$(grep -E '^(DOWNLOAD|DOWNLOAD_x86_64)=' "$info_file" | head -1)
+        homepage=$(grep -E '^HOMEPAGE=' "$info_file" | head -1)
+    fi
+    local haystack="${download} ${homepage}"
+
+    local section=""
+    if [[ "$haystack" =~ github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+) ]]; then
+        local owner="${BASH_REMATCH[1]}"
+        local repo="${BASH_REMATCH[2]}"
+        repo="${repo%.git}"
+        section=$(cat <<EOF
+
+${label}
+source = "github"
+github = "${owner}/${repo}"
+use_max_tag = true
+EOF
+)
+    elif [[ "$haystack" =~ (pypi\.org|files\.pythonhosted\.org) ]]; then
+        section=$(cat <<EOF
+
+${label}
+source = "pypi"
+pypi = "${pkg}"
+EOF
+)
+    else
+        section=$(cat <<EOF
+
+${label}
+# TODO: configure nvchecker source for "${pkg}"
+# source = "regex"
+# url = "..."
+# regex = "..."
+# see https://nvchecker.readthedocs.io/en/latest/usage.html
+EOF
+)
+    fi
+
+    printf '%s\n' "$section" >> "$NVCHECKER_CONFIG"
+    echo "nvchecker: review/fill ${label} section in $NVCHECKER_CONFIG"
 }
 
 # Add NODOWNLOAD=yes after MD5SUM_x86_64 line if not already present
@@ -287,6 +428,36 @@ build_multiline_value() {
         fi
     done
     printf '"\n'
+}
+
+# Query nvchecker for a package's latest version and let the user accept or
+# override it. Echoes the chosen version on stdout. Returns non-zero if the
+# user declines or no version is available (caller decides what to do).
+suggest_version() {
+    local pkg="$1"
+
+    # Refresh nvchecker results (stderr only; keep stdout clean for the echo)
+    nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+
+    local latest
+    latest=$(nvchecker_latest "$pkg") || {
+        echo "Error: no nvchecker result for '$pkg'. Add/fix its [${pkg}] section in $NVCHECKER_CONFIG" >&2
+        return 1
+    }
+
+    # Read current version from the hint file (best effort, for display)
+    local hintpath="${HINT_DIR%/}/${pkg}.hint"
+    local current=""
+    [[ -f "$hintpath" ]] && current=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
+
+    local answer
+    read -r -p "current ${current:-?}, latest ${latest}. Use ${latest}? [Y/n] (or type a version) " answer >&2
+    answer="${answer:-Y}"
+    case "$answer" in
+        [Yy]) printf '%s\n' "$latest" ;;
+        [Nn]) return 1 ;;
+        *)    printf '%s\n' "$answer" ;;
+    esac
 }
 
 # Download files and update MD5SUM/MD5SUM_x86_64 in hint file
@@ -459,11 +630,130 @@ clean_bak_files() {
     echo "Removed $count .bak file(s) from $HINT_DIR"
 }
 
+# Bulk-check hint files for upstream updates and apply interactively.
+# Usage: check_updates [pkg...]   (no args = all *.hint in HINT_DIR)
+check_updates() {
+    check_nvchecker
+
+    if [[ ! -d "$HINT_DIR" ]]; then
+        echo "Error: Hint directory does not exist: $HINT_DIR" >&2
+        exit 2
+    fi
+
+    # Build the target package list
+    local targets=()
+    if [[ $# -gt 0 ]]; then
+        targets=("$@")
+    else
+        local f
+        for f in "$HINT_DIR"/*.hint; do
+            [[ -f "$f" ]] || continue
+            local b; b=$(basename "$f"); targets+=("${b%.hint}")
+        done
+    fi
+
+    # Refresh nvchecker results once for everything
+    echo "Running nvchecker..."
+    nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+
+    # Classify each target
+    local outdated_pkgs=() outdated_old=() outdated_new=() outdated_flag=()
+    local missing_sections=()
+    local pkg
+    for pkg in "${targets[@]}"; do
+        local hintpath="${HINT_DIR%/}/${pkg}.hint"
+        [[ -f "$hintpath" ]] || { echo "skip ${pkg}: no hint file"; continue; }
+        local current; current=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
+        local latest
+        if ! latest=$(nvchecker_latest "$pkg"); then
+            if _has_nvchecker_section "$pkg"; then
+                echo "skip ${pkg}: no nvchecker result"
+            else
+                echo "skip ${pkg}: no nvchecker section"
+                missing_sections+=("$pkg")
+            fi
+            continue
+        fi
+        [[ "$current" == "$latest" ]] && continue   # up to date
+        # determine direction with sort -V
+        local newest; newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)
+        local flag="update"
+        [[ "$newest" == "$current" ]] && flag="?downgrade"
+        outdated_pkgs+=("$pkg")
+        outdated_old+=("$current")
+        outdated_new+=("$latest")
+        outdated_flag+=("$flag")
+    done
+
+    # Offer to populate nvchecker.toml for packages with no section
+    if [[ ${#missing_sections[@]} -gt 0 ]]; then
+        echo ""
+        echo "${#missing_sections[@]} package(s) have no nvchecker section: ${missing_sections[*]}"
+        local answer
+        read -r -p "Populate ${NVCHECKER_CONFIG} now? [Y/n] " answer
+        answer="${answer:-Y}"
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            local mp info
+            for mp in "${missing_sections[@]}"; do
+                info=$(find "$REPO_DIR" -mindepth 2 -name "${mp}.info" 2>/dev/null | head -1)
+                if [[ -z "$info" ]]; then
+                    echo "skip ${mp}: no .info found in $REPO_DIR"
+                    continue
+                fi
+                add_nvchecker_section "$mp" "$info"
+            done
+            echo ""
+            echo "Sections added. Review $NVCHECKER_CONFIG (fill any stubs), then re-run 'mkhint -C'."
+            return 0
+        fi
+    fi
+
+    if [[ ${#outdated_pkgs[@]} -eq 0 ]]; then
+        echo "all up to date"
+        return 0
+    fi
+
+    # Report
+    echo ""
+    echo "Updates available:"
+    local i
+    for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
+        local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
+        printf "  %-30s %s -> %s%s\n" "${outdated_pkgs[$i]}" "${outdated_old[$i]}" "${outdated_new[$i]}" "$note"
+    done
+    echo ""
+
+    # Per-package confirm + update
+    local updated=()
+    for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
+        local p="${outdated_pkgs[$i]}"
+        local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
+        local answer
+        read -r -p "${p}  ${outdated_old[$i]} -> ${outdated_new[$i]}${note}. Update? [Y/n] " answer
+        answer="${answer:-Y}"
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            update_hint_file "$p" "${outdated_new[$i]}"
+            nvtake -c "$NVCHECKER_CONFIG" "$p" >&2 || true
+            updated+=("$p")
+        fi
+    done
+
+    # Single slackrepo prompt for everything updated
+    if [[ ${#updated[@]} -gt 0 ]]; then
+        local answer
+        read -r -p "Run 'slackrepo update ${updated[*]}'? [Y/n] " answer
+        answer="${answer:-Y}"
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            slackrepo update "${updated[@]}"
+        fi
+    fi
+}
+
 # Main function
 main() {
     local parsed
-    parsed=$(getopt -o v:f:n:lcdNh \
-        --long version:,hintfile:,new:,list,clean,delete,no-dl,help \
+    parsed=$(getopt -o v:f:n:lcCdNh \
+        --long version:,hintfile:,new:,list,clean,check,delete,no-dl,help \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
@@ -487,6 +777,10 @@ main() {
                 ;;
             --clean|-c)
                 COMMAND="clean"
+                shift
+                ;;
+            --check|-C)
+                COMMAND="check"
                 shift
                 ;;
             --delete|-d)
@@ -521,7 +815,7 @@ main() {
 
     if [[ -z "$COMMAND" ]]; then
         # Default to update hint file if VERSION and HINT_FILE are provided
-        if [[ -n "$VERSION" && -n "$HINT_FILE" ]]; then
+        if [[ -n "$HINT_FILE" ]]; then
             COMMAND="update"
         elif [[ -n "$NEW_HINT_FILE" ]]; then
             COMMAND="new"
@@ -535,6 +829,11 @@ main() {
         exit 1
     fi
 
+    if [[ "$COMMAND" == "check" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
+        echo "Error: --check cannot be combined with --version/--hintfile/--new" >&2
+        exit 1
+    fi
+
     case "$COMMAND" in
         help)
             show_help
@@ -545,9 +844,20 @@ main() {
         clean)
             clean_bak_files
             ;;
+        check)
+            check_updates "${DELETE_HINT_FILES[@]}"
+            ;;
         update)
             check_wget
+            if [[ -z "$VERSION" ]]; then
+                check_nvchecker
+                VERSION=$(suggest_version "$HINT_FILE") || { echo "Aborted." >&2; exit 0; }
+                check_nvchecker_take=1
+            fi
             update_hint_file "$HINT_FILE" "$VERSION"
+            if [[ "${check_nvchecker_take:-0}" -eq 1 ]]; then
+                nvtake -c "$NVCHECKER_CONFIG" "$HINT_FILE" >&2 || true
+            fi
             prompt_slackrepo "$HINT_FILE"
             ;;
         new)

@@ -15,6 +15,9 @@ setup() {
     mkdir -p "$MOCK_REPO/network/curl" \
              "$MOCK_REPO/development/protoc-gen-go-grpc" \
              "$MOCK_REPO/development/clion" \
+             "$MOCK_REPO/development/ghpkg" \
+             "$MOCK_REPO/python/pypkg" \
+             "$MOCK_REPO/multimedia/yt-dlp" \
              "$MOCK_HINT" \
              "$MOCK_TMP"
 
@@ -61,6 +64,58 @@ REQUIRES=""
 MAINTAINER="Test"
 EMAIL="test@test.com"
 EOF
+
+    cat > "$MOCK_REPO/development/ghpkg/ghpkg.info" << 'EOF'
+PRGNAM="ghpkg"
+VERSION="1.0.0"
+HOMEPAGE="https://github.com/someowner/ghpkg"
+DOWNLOAD="https://github.com/someowner/ghpkg/archive/v1.0.0/ghpkg-1.0.0.tar.gz"
+MD5SUM="11111111111111111111111111111111"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    cat > "$MOCK_REPO/python/pypkg/pypkg.info" << 'EOF'
+PRGNAM="pypkg"
+VERSION="2.0.0"
+HOMEPAGE="https://pypi.org/project/pypkg/"
+DOWNLOAD="https://files.pythonhosted.org/packages/source/p/pypkg/pypkg-2.0.0.tar.gz"
+MD5SUM="22222222222222222222222222222222"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    # github .info with a dash in the package name (needs TOML quoting)
+    cat > "$MOCK_REPO/multimedia/yt-dlp/yt-dlp.info" << 'EOF'
+PRGNAM="yt-dlp"
+VERSION="2024.1.1"
+HOMEPAGE="https://github.com/yt-dlp/yt-dlp"
+DOWNLOAD="https://github.com/yt-dlp/yt-dlp/archive/2024.1.1/yt-dlp-2024.1.1.tar.gz"
+MD5SUM="55555555555555555555555555555555"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    # nvchecker config + keyfile for tests
+    cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+    # keyfile pre-seeded with versions the mock nvchecker will "find"
+    cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" }, "clion": { "version": "2025.4" } } }
+EOF
+    cp "$MOCK_BASE/new_ver.json" "$MOCK_BASE/old_ver.json"
 }
 
 teardown() {
@@ -74,6 +129,7 @@ run_mkhint() {
         -e "s|REPO_DIR=\".*\"|REPO_DIR=\"$MOCK_REPO\"|" \
         -e "s|HINT_DIR=\".*\"|HINT_DIR=\"$MOCK_HINT\"|" \
         -e "s|TMP_DIR=\".*\"|TMP_DIR=\"$MOCK_TMP\"|" \
+        -e "s|NVCHECKER_CONFIG=\".*\"|NVCHECKER_CONFIG=\"$MOCK_BASE/nvchecker.toml\"|" \
         "$SCRIPT" > "$tmp_script"
     bash "$tmp_script" "$@"
     local rc=$?
@@ -101,6 +157,30 @@ exit 0
 EOF
     chmod +x "$MOCK_BASE/bin/wget"
     export PATH="$MOCK_BASE/bin:$PATH"
+}
+
+# Mock nvchecker, nvtake into $MOCK_BASE/bin (real jq used if present)
+mock_nvchecker_tools() {
+    mkdir -p "$MOCK_BASE/bin"
+
+    # nvchecker: no-op success (keyfile is pre-seeded by setup/tests)
+    cat > "$MOCK_BASE/bin/nvchecker" << 'EOF'
+#!/bin/bash
+exit 0
+EOF
+    chmod +x "$MOCK_BASE/bin/nvchecker"
+
+    # nvtake: record invocations, otherwise no-op
+    cat > "$MOCK_BASE/bin/nvtake" << EOF
+#!/bin/bash
+echo "nvtake \$*" >> "$MOCK_BASE/nvtake.log"
+exit 0
+EOF
+    chmod +x "$MOCK_BASE/bin/nvtake"
+
+    if ! command -v jq &> /dev/null; then
+        echo "WARNING: real jq not found; install jq to run nvchecker tests" >&2
+    fi
 }
 
 assert_contains() {
@@ -175,6 +255,7 @@ echo "========================================"
 
 setup
 mock_wget
+mock_nvchecker_tools
 
 # ── T1: --new from .info, no version ──────────────────────────────────────────
 echo ""
@@ -332,6 +413,336 @@ touch "$MOCK_HINT/a.hint.bak" "$MOCK_HINT/b.hint.bak"
 run_mkhint -c
 assert_file_not_exists "a.bak removed"           "$MOCK_HINT/a.hint.bak"
 assert_file_not_exists "b.bak removed"           "$MOCK_HINT/b.hint.bak"
+
+# ── T16: --new github .info → github source section ───────────────────────────
+echo ""
+echo "T16: --new github .info → [pkg] source=github appended"
+run_mkhint -n ghpkg
+assert_contains "github section header"  "$MOCK_BASE/nvchecker.toml" '\[ghpkg\]'
+assert_contains "github source"          "$MOCK_BASE/nvchecker.toml" 'source = "github"'
+assert_contains "github owner/repo"      "$MOCK_BASE/nvchecker.toml" 'github = "someowner/ghpkg"'
+
+# ── T17: --new pypi .info → pypi source section ───────────────────────────────
+echo ""
+echo "T17: --new pypi .info → [pkg] source=pypi appended"
+run_mkhint -n pypkg
+assert_contains "pypi section header"     "$MOCK_BASE/nvchecker.toml" '\[pypkg\]'
+assert_contains "pypi source"             "$MOCK_BASE/nvchecker.toml" 'source = "pypi"'
+assert_contains "pypi name"               "$MOCK_BASE/nvchecker.toml" 'pypi = "pypkg"'
+
+# ── T18: --new unrecognised URL → commented stub ──────────────────────────────
+echo ""
+echo "T18: --new unknown source → commented stub appended"
+run_mkhint -n clion
+assert_contains "clion section header"    "$MOCK_BASE/nvchecker.toml" '\[clion\]'
+assert_contains "stub TODO"               "$MOCK_BASE/nvchecker.toml" 'TODO: configure nvchecker source'
+
+# ── T19: --new when [pkg] already present → no duplicate ───────────────────────
+echo ""
+echo "T19: --new when section exists → not duplicated"
+run_mkhint -n ghpkg  # ghpkg section already added in T16
+dup_count=$(grep -c '^\[ghpkg\]' "$MOCK_BASE/nvchecker.toml")
+assert_exit_code "ghpkg section appears once" 1 "$dup_count"
+
+# ── T20: --hintfile no -v, accept suggestion → VERSION=latest, nvtake called ───
+echo ""
+echo "T20: --hintfile no -v, accept suggestion"
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+rm -f "$MOCK_BASE/nvtake.log"
+# blank = accept latest (8.9.0 from keyfile); n = skip slackrepo
+run_mkhint -f curl < <(printf '\nn\n')
+assert_contains "VERSION set to latest"   "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
+assert_contains "URL has latest version"  "$MOCK_HINT/curl.hint" 'curl-8.9.0'
+assert_file_exists "nvtake was called"    "$MOCK_BASE/nvtake.log"
+
+# ── T21: --hintfile no -v, type override version ──────────────────────────────
+echo ""
+echo "T21: --hintfile no -v, type override version"
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -f curl < <(printf '8.8.8\nn\n')
+assert_contains "VERSION = typed value"   "$MOCK_HINT/curl.hint" 'VERSION="8.8.8"'
+assert_contains "URL has typed version"   "$MOCK_HINT/curl.hint" 'curl-8.8.8'
+
+# ── T22: --hintfile no -v, package absent from keyfile → graceful abort ────────
+echo ""
+echo "T22: --hintfile no -v, package absent from keyfile → error, hint untouched"
+cat > "$MOCK_HINT/protoc-gen-go-grpc.hint" << 'EOF'
+VERSION="1.3.0"
+ARCH="x86_64"
+DOWNLOAD="https://example.com/x-1.3.0.tar.gz"
+MD5SUM="33333333333333333333333333333333"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+set +e
+run_mkhint -f protoc-gen-go-grpc < <(printf '\n') >/dev/null 2>&1
+code=$?
+set -e
+assert_exit_code "graceful abort on no result" 0 "$code"
+assert_contains  "hint version unchanged"      "$MOCK_HINT/protoc-gen-go-grpc.hint" 'VERSION="1.3.0"'
+
+# ── T23: --check one outdated, confirm → updated + nvtake + slackrepo prompt ───
+echo ""
+echo "T23: --check single outdated package, confirm update"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+rm -f "$MOCK_HINT/clion.hint" "$MOCK_HINT/protoc-gen-go-grpc.hint" "$MOCK_HINT"/*.bak 2>/dev/null
+rm -f "$MOCK_BASE/nvtake.log"
+run_mkhint -C curl < <(printf 'Y\nn\n')
+assert_contains "curl updated to 8.9.0"   "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
+assert_file_exists "nvtake called"        "$MOCK_BASE/nvtake.log"
+
+# ── T24: --check all current → 'all up to date', no slackrepo ──────────────────
+echo ""
+echo "T24: --check when everything current"
+out=$(run_mkhint -C curl < <(printf '\n') 2>&1)
+echo "$out" | grep -q "all up to date" \
+    && { echo "  PASS: reports all up to date"; (( PASS++ )); } \
+    || { echo "  FAIL: did not report all up to date"; (( FAIL++ )); ERRORS+=("T24 up to date"); }
+
+# ── T25: --check two outdated, decline first accept second ─────────────────────
+echo ""
+echo "T25: --check two outdated, decline first accept second"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "9.0.0" }, "clion": { "version": "2025.5" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.9.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.9.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="2025.4"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+DOWNLOAD_x86_64="https://download.jetbrains.com/cpp/CLion-2025.4.tar.gz"
+MD5SUM_x86_64="dff91fe793b8d3ee2446dd340288eef5"
+EOF
+# explicit order curl clion → answers: n (decline curl), Y (accept clion), n (slackrepo)
+run_mkhint -C curl clion < <(printf 'n\nY\nn\n')
+assert_contains     "curl declined (unchanged)"  "$MOCK_HINT/curl.hint"  'VERSION="8.9.0"'
+assert_contains     "clion accepted (updated)"   "$MOCK_HINT/clion.hint" 'VERSION="2025.5"'
+
+# ── T26: --check with -v → mutually-exclusive error exit 1 ─────────────────────
+echo ""
+echo "T26: --check combined with -v → exit 1"
+set +e
+run_mkhint -C -v 1.0 2>/dev/null
+code=$?
+set -e
+assert_exit_code "check + -v exits 1" 1 "$code"
+
+# ── T27: --check upstream older than hint → (?downgrade) flag ──────────────────
+echo ""
+echo "T27: --check when upstream version is older → reported as (?downgrade)"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.0.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.9.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.9.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+# decline the update (n), so hint stays unchanged; capture report output
+out=$(run_mkhint -C curl < <(printf 'n\n') 2>&1)
+echo "$out" | grep -q "(?downgrade)" \
+    && { echo "  PASS: downgrade flagged in report"; (( PASS++ )); } \
+    || { echo "  FAIL: (?downgrade) not in report"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T27 downgrade flag"); }
+assert_contains "curl unchanged after decline" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
+
+# ── T28: --check with no args → scans all hints in HINT_DIR ────────────────────
+echo ""
+echo "T28: --check with no package args scans entire HINT_DIR"
+# only curl present and outdated; new_ver has curl 8.9.0
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+# no pkg args → scan-all; accept curl (Y), decline slackrepo (n)
+run_mkhint -C < <(printf 'Y\nn\n')
+assert_contains "scan-all updated curl" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
+
+# ── T29: --check missing section, accept populate → section added, run stops ───
+echo ""
+echo "T29: --check missing section, accept populate → github section appended, no update"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": {} }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/ghpkg.hint" << 'EOF'
+VERSION="1.0.0"
+ARCH="x86_64"
+DOWNLOAD="https://github.com/someowner/ghpkg/archive/v1.0.0/ghpkg-1.0.0.tar.gz"
+MD5SUM="11111111111111111111111111111111"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+out=$(run_mkhint -C ghpkg < <(printf 'Y\n') 2>&1)
+assert_contains "ghpkg section appended"     "$MOCK_BASE/nvchecker.toml" '\[ghpkg\]'
+assert_contains "github source detected"     "$MOCK_BASE/nvchecker.toml" 'source = "github"'
+echo "$out" | grep -q "Review .*re-run" \
+    && { echo "  PASS: review/re-run message shown"; (( PASS++ )); } \
+    || { echo "  FAIL: review message missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T29 review msg"); }
+assert_contains "ghpkg hint version unchanged" "$MOCK_HINT/ghpkg.hint" 'VERSION="1.0.0"'
+
+# ── T30: --check missing section, decline populate → no section added ──────────
+echo ""
+echo "T30: --check missing section, decline populate → nothing added"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": {} }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/ghpkg.hint" << 'EOF'
+VERSION="1.0.0"
+ARCH="x86_64"
+DOWNLOAD="https://github.com/someowner/ghpkg/archive/v1.0.0/ghpkg-1.0.0.tar.gz"
+MD5SUM="11111111111111111111111111111111"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -C ghpkg < <(printf 'n\n') >/dev/null 2>&1
+assert_not_contains "no ghpkg section after decline" "$MOCK_BASE/nvchecker.toml" '\[ghpkg\]'
+
+# ── T31: --check missing section, no .info in repo, accept → skipped, no section
+echo ""
+echo "T31: --check missing section but no .info → skipped, no section added"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": {} }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/orphanpkg.hint" << 'EOF'
+VERSION="3.0.0"
+ARCH="x86_64"
+DOWNLOAD="https://example.com/orphanpkg-3.0.0.tar.gz"
+MD5SUM="44444444444444444444444444444444"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+out=$(run_mkhint -C orphanpkg < <(printf 'Y\n') 2>&1)
+echo "$out" | grep -q "no .info found" \
+    && { echo "  PASS: no .info reported"; (( PASS++ )); } \
+    || { echo "  FAIL: 'no .info found' not in output"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T31 no info"); }
+assert_not_contains "no orphanpkg section added" "$MOCK_BASE/nvchecker.toml" '\[orphanpkg\]'
+
+# ── T32: --new with dash in name → section header is TOML-quoted ───────────────
+echo ""
+echo "T32: --new yt-dlp → [\"yt-dlp\"] quoted header written"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+run_mkhint -n yt-dlp
+assert_contains     "quoted section header"   "$MOCK_BASE/nvchecker.toml" '^\["yt-dlp"\]'
+assert_not_contains "no bare header"          "$MOCK_BASE/nvchecker.toml" '^\[yt-dlp\]'
+assert_contains     "github source"           "$MOCK_BASE/nvchecker.toml" 'github = "yt-dlp/yt-dlp"'
+
+# ── T33: _has_nvchecker_section matches quoted header → no duplicate on re---new
+echo ""
+echo "T33: --new yt-dlp again → quoted section not duplicated"
+run_mkhint -n yt-dlp  # section already exists from T32 (quoted)
+dup_count=$(grep -cE '^\["yt-dlp"\]' "$MOCK_BASE/nvchecker.toml")
+assert_exit_code "quoted yt-dlp appears once" 1 "$dup_count"
+
+# ── T34: --check sees quoted section as present, not "no section" ──────────────
+echo ""
+echo "T34: --check with existing quoted section → not flagged missing"
+# yt-dlp quoted section present (from T32); not in keyfile → 'no nvchecker result', NOT 'no section'
+cat > "$MOCK_HINT/yt-dlp.hint" << 'EOF'
+VERSION="2024.1.1"
+ARCH="x86_64"
+DOWNLOAD="https://github.com/yt-dlp/yt-dlp/archive/2024.1.1/yt-dlp-2024.1.1.tar.gz"
+MD5SUM="55555555555555555555555555555555"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+out=$(run_mkhint -C yt-dlp < <(printf 'n\n') 2>&1)
+echo "$out" | grep -q "yt-dlp: no nvchecker result" \
+    && { echo "  PASS: quoted section recognized (no result, not no section)"; (( PASS++ )); } \
+    || { echo "  FAIL: quoted section not recognized"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T34 quoted recognized"); }
+echo "$out" | grep -q "yt-dlp: no nvchecker section" \
+    && { echo "  FAIL: quoted section wrongly flagged missing"; (( FAIL++ )); ERRORS+=("T34 false missing"); } \
+    || { echo "  PASS: not flagged as missing section"; (( PASS++ )); }
+
+# ── T35: relative newver path resolved against config dir, not CWD ─────────────
+echo ""
+echo "T35: relative newver path in config → resolved against config dir"
+# config uses a RELATIVE newver path (as nvchecker writes by default).
+# keyfile lives beside the config in $MOCK_BASE. The run happens with CWD
+# elsewhere (the repo dir), so a CWD-relative read would fail to find it.
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "old_ver.json"
+newver = "new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -C curl < <(printf 'Y\nn\n')
+assert_contains "relative-path keyfile found → curl updated" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
