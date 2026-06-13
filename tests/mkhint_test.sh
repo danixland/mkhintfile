@@ -544,6 +544,47 @@ code=$?
 set -e
 assert_exit_code "check + -v exits 1" 1 "$code"
 
+# ── T27: --check upstream older than hint → (?downgrade) flag ──────────────────
+echo ""
+echo "T27: --check when upstream version is older → reported as (?downgrade)"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.0.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.9.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.9.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+# decline the update (n), so hint stays unchanged; capture report output
+out=$(run_mkhint -C curl < <(printf 'n\n') 2>&1)
+echo "$out" | grep -q "(?downgrade)" \
+    && { echo "  PASS: downgrade flagged in report"; (( PASS++ )); } \
+    || { echo "  FAIL: (?downgrade) not in report"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T27 downgrade flag"); }
+assert_contains "curl unchanged after decline" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
+
+# ── T28: --check with no args → scans all hints in HINT_DIR ────────────────────
+echo ""
+echo "T28: --check with no package args scans entire HINT_DIR"
+# only curl present and outdated; new_ver has curl 8.9.0
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+# no pkg args → scan-all; accept curl (Y), decline slackrepo (n)
+run_mkhint -C < <(printf 'Y\nn\n')
+assert_contains "scan-all updated curl" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
