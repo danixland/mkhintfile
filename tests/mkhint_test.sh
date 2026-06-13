@@ -17,6 +17,7 @@ setup() {
              "$MOCK_REPO/development/clion" \
              "$MOCK_REPO/development/ghpkg" \
              "$MOCK_REPO/python/pypkg" \
+             "$MOCK_REPO/multimedia/yt-dlp" \
              "$MOCK_HINT" \
              "$MOCK_TMP"
 
@@ -83,6 +84,20 @@ VERSION="2.0.0"
 HOMEPAGE="https://pypi.org/project/pypkg/"
 DOWNLOAD="https://files.pythonhosted.org/packages/source/p/pypkg/pypkg-2.0.0.tar.gz"
 MD5SUM="22222222222222222222222222222222"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    # github .info with a dash in the package name (needs TOML quoting)
+    cat > "$MOCK_REPO/multimedia/yt-dlp/yt-dlp.info" << 'EOF'
+PRGNAM="yt-dlp"
+VERSION="2024.1.1"
+HOMEPAGE="https://github.com/yt-dlp/yt-dlp"
+DOWNLOAD="https://github.com/yt-dlp/yt-dlp/archive/2024.1.1/yt-dlp-2024.1.1.tar.gz"
+MD5SUM="55555555555555555555555555555555"
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 REQUIRES=""
@@ -661,6 +676,47 @@ echo "$out" | grep -q "no .info found" \
     && { echo "  PASS: no .info reported"; (( PASS++ )); } \
     || { echo "  FAIL: 'no .info found' not in output"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T31 no info"); }
 assert_not_contains "no orphanpkg section added" "$MOCK_BASE/nvchecker.toml" '\[orphanpkg\]'
+
+# ── T32: --new with dash in name → section header is TOML-quoted ───────────────
+echo ""
+echo "T32: --new yt-dlp → [\"yt-dlp\"] quoted header written"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+run_mkhint -n yt-dlp
+assert_contains     "quoted section header"   "$MOCK_BASE/nvchecker.toml" '^\["yt-dlp"\]'
+assert_not_contains "no bare header"          "$MOCK_BASE/nvchecker.toml" '^\[yt-dlp\]'
+assert_contains     "github source"           "$MOCK_BASE/nvchecker.toml" 'github = "yt-dlp/yt-dlp"'
+
+# ── T33: _has_nvchecker_section matches quoted header → no duplicate on re---new
+echo ""
+echo "T33: --new yt-dlp again → quoted section not duplicated"
+run_mkhint -n yt-dlp  # section already exists from T32 (quoted)
+dup_count=$(grep -cE '^\["yt-dlp"\]' "$MOCK_BASE/nvchecker.toml")
+assert_exit_code "quoted yt-dlp appears once" 1 "$dup_count"
+
+# ── T34: --check sees quoted section as present, not "no section" ──────────────
+echo ""
+echo "T34: --check with existing quoted section → not flagged missing"
+# yt-dlp quoted section present (from T32); not in keyfile → 'no nvchecker result', NOT 'no section'
+cat > "$MOCK_HINT/yt-dlp.hint" << 'EOF'
+VERSION="2024.1.1"
+ARCH="x86_64"
+DOWNLOAD="https://github.com/yt-dlp/yt-dlp/archive/2024.1.1/yt-dlp-2024.1.1.tar.gz"
+MD5SUM="55555555555555555555555555555555"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+out=$(run_mkhint -C yt-dlp < <(printf 'n\n') 2>&1)
+echo "$out" | grep -q "yt-dlp: no nvchecker result" \
+    && { echo "  PASS: quoted section recognized (no result, not no section)"; (( PASS++ )); } \
+    || { echo "  FAIL: quoted section not recognized"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T34 quoted recognized"); }
+echo "$out" | grep -q "yt-dlp: no nvchecker section" \
+    && { echo "  FAIL: quoted section wrongly flagged missing"; (( FAIL++ )); ERRORS+=("T34 false missing"); } \
+    || { echo "  PASS: not flagged as missing section"; (( PASS++ )); }
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown

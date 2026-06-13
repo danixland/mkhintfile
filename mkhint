@@ -261,11 +261,26 @@ EOF
     fi
 }
 
-# Return 0 if NVCHECKER_CONFIG already has a [pkg] section
+# Emit the TOML section label for a package: bare if the name is a valid
+# bare key ([A-Za-z0-9_] only), otherwise double-quoted. nvchecker (and TOML)
+# require quoting for names containing '.', '-', etc.
+_nvchecker_label() {
+    local pkg="$1"
+    if [[ "$pkg" =~ ^[A-Za-z0-9_]+$ ]]; then
+        printf '[%s]' "$pkg"
+    else
+        printf '["%s"]' "$pkg"
+    fi
+}
+
+# Return 0 if NVCHECKER_CONFIG already has a section for pkg (bare or quoted)
 _has_nvchecker_section() {
     local pkg="$1"
     [[ -f "$NVCHECKER_CONFIG" ]] || return 1
-    grep -qE "^\[${pkg}\][[:space:]]*$" "$NVCHECKER_CONFIG"
+    local label; label=$(_nvchecker_label "$pkg")
+    # fixed-string match of the exact label at line start, trailing space allowed
+    grep -qE "^$(printf '%s' "$label" | sed 's/[][\.*^$/]/\\&/g')[[:space:]]*$" \
+        "$NVCHECKER_CONFIG"
 }
 
 # Append an nvchecker [pkg] section to NVCHECKER_CONFIG, auto-detecting the
@@ -278,9 +293,11 @@ add_nvchecker_section() {
     mkdir -p "$(dirname "$NVCHECKER_CONFIG")"
     touch "$NVCHECKER_CONFIG"
 
+    local label; label=$(_nvchecker_label "$pkg")
+
     # Skip if section already present
     if _has_nvchecker_section "$pkg"; then
-        echo "nvchecker: [${pkg}] already present in $NVCHECKER_CONFIG"
+        echo "nvchecker: ${label} already present in $NVCHECKER_CONFIG"
         return 0
     fi
 
@@ -298,7 +315,7 @@ add_nvchecker_section() {
         repo="${repo%.git}"
         section=$(cat <<EOF
 
-[${pkg}]
+${label}
 source = "github"
 github = "${owner}/${repo}"
 use_max_tag = true
@@ -307,7 +324,7 @@ EOF
     elif [[ "$haystack" =~ (pypi\.org|files\.pythonhosted\.org) ]]; then
         section=$(cat <<EOF
 
-[${pkg}]
+${label}
 source = "pypi"
 pypi = "${pkg}"
 EOF
@@ -315,7 +332,7 @@ EOF
     else
         section=$(cat <<EOF
 
-[${pkg}]
+${label}
 # TODO: configure nvchecker source for "${pkg}"
 # source = "regex"
 # url = "..."
@@ -326,7 +343,7 @@ EOF
     fi
 
     printf '%s\n' "$section" >> "$NVCHECKER_CONFIG"
-    echo "nvchecker: review/fill [${pkg}] section in $NVCHECKER_CONFIG"
+    echo "nvchecker: review/fill ${label} section in $NVCHECKER_CONFIG"
 }
 
 # Add NODOWNLOAD=yes after MD5SUM_x86_64 line if not already present
