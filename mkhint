@@ -259,6 +259,67 @@ EOF
     fi
 }
 
+# Append an nvchecker [pkg] section to NVCHECKER_CONFIG, auto-detecting the
+# source from the package's .info DOWNLOAD/HOMEPAGE. No-op if section exists.
+add_nvchecker_section() {
+    local pkg="$1"
+    local info_file="$2"
+
+    # Ensure config dir/file exist (do not create __config__; user owns that)
+    mkdir -p "$(dirname "$NVCHECKER_CONFIG")"
+    touch "$NVCHECKER_CONFIG"
+
+    # Skip if section already present
+    if grep -qE "^\[${pkg}\][[:space:]]*$" "$NVCHECKER_CONFIG"; then
+        echo "nvchecker: [${pkg}] already present in $NVCHECKER_CONFIG"
+        return 0
+    fi
+
+    local download="" homepage=""
+    if [[ -f "$info_file" ]]; then
+        download=$(grep -E '^(DOWNLOAD|DOWNLOAD_x86_64)=' "$info_file" | head -1)
+        homepage=$(grep -E '^HOMEPAGE=' "$info_file" | head -1)
+    fi
+    local haystack="${download} ${homepage}"
+
+    local section=""
+    if [[ "$haystack" =~ github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+) ]]; then
+        local owner="${BASH_REMATCH[1]}"
+        local repo="${BASH_REMATCH[2]}"
+        repo="${repo%.git}"
+        section=$(cat <<EOF
+
+[${pkg}]
+source = "github"
+github = "${owner}/${repo}"
+use_max_tag = true
+EOF
+)
+    elif [[ "$haystack" =~ (pypi\.org|files\.pythonhosted\.org) ]]; then
+        section=$(cat <<EOF
+
+[${pkg}]
+source = "pypi"
+pypi = "${pkg}"
+EOF
+)
+    else
+        section=$(cat <<EOF
+
+[${pkg}]
+# TODO: configure nvchecker source for "${pkg}"
+# source = "regex"
+# url = "..."
+# regex = "..."
+# see https://nvchecker.readthedocs.io/en/latest/usage.html
+EOF
+)
+    fi
+
+    printf '%s\n' "$section" >> "$NVCHECKER_CONFIG"
+    echo "nvchecker: review/fill [${pkg}] section in $NVCHECKER_CONFIG"
+}
+
 # Add NODOWNLOAD=yes after MD5SUM_x86_64 line if not already present
 add_nodownload() {
     local file="$1"
