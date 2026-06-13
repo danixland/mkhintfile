@@ -636,13 +636,22 @@ check_updates() {
 
     # Classify each target
     local outdated_pkgs=() outdated_old=() outdated_new=() outdated_flag=()
+    local missing_sections=()
     local pkg
     for pkg in "${targets[@]}"; do
         local hintpath="${HINT_DIR%/}/${pkg}.hint"
         [[ -f "$hintpath" ]] || { echo "skip ${pkg}: no hint file"; continue; }
         local current; current=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
         local latest
-        latest=$(nvchecker_latest "$pkg") || { echo "skip ${pkg}: no nvchecker source"; continue; }
+        if ! latest=$(nvchecker_latest "$pkg"); then
+            if _has_nvchecker_section "$pkg"; then
+                echo "skip ${pkg}: no nvchecker result"
+            else
+                echo "skip ${pkg}: no nvchecker section"
+                missing_sections+=("$pkg")
+            fi
+            continue
+        fi
         [[ "$current" == "$latest" ]] && continue   # up to date
         # determine direction with sort -V
         local newest; newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)
@@ -653,6 +662,29 @@ check_updates() {
         outdated_new+=("$latest")
         outdated_flag+=("$flag")
     done
+
+    # Offer to populate nvchecker.toml for packages with no section
+    if [[ ${#missing_sections[@]} -gt 0 ]]; then
+        echo ""
+        echo "${#missing_sections[@]} package(s) have no nvchecker section: ${missing_sections[*]}"
+        local answer
+        read -r -p "Populate ${NVCHECKER_CONFIG} now? [Y/n] " answer
+        answer="${answer:-Y}"
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            local mp info
+            for mp in "${missing_sections[@]}"; do
+                info=$(find "$REPO_DIR" -mindepth 2 -name "${mp}.info" 2>/dev/null | head -1)
+                if [[ -z "$info" ]]; then
+                    echo "skip ${mp}: no .info found in $REPO_DIR"
+                    continue
+                fi
+                add_nvchecker_section "$mp" "$info"
+            done
+            echo ""
+            echo "Sections added. Review $NVCHECKER_CONFIG (fill any stubs), then re-run 'mkhint -C'."
+            return 0
+        fi
+    fi
 
     if [[ ${#outdated_pkgs[@]} -eq 0 ]]; then
         echo "all up to date"
