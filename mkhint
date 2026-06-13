@@ -600,11 +600,98 @@ clean_bak_files() {
     echo "Removed $count .bak file(s) from $HINT_DIR"
 }
 
+# Bulk-check hint files for upstream updates and apply interactively.
+# Usage: check_updates [pkg...]   (no args = all *.hint in HINT_DIR)
+check_updates() {
+    check_nvchecker
+
+    if [[ ! -d "$HINT_DIR" ]]; then
+        echo "Error: Hint directory does not exist: $HINT_DIR" >&2
+        exit 2
+    fi
+
+    # Build the target package list
+    local targets=()
+    if [[ $# -gt 0 ]]; then
+        targets=("$@")
+    else
+        local f
+        for f in "$HINT_DIR"/*.hint; do
+            [[ -f "$f" ]] || continue
+            local b; b=$(basename "$f"); targets+=("${b%.hint}")
+        done
+    fi
+
+    # Refresh nvchecker results once for everything
+    echo "Running nvchecker..."
+    nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+
+    # Classify each target
+    local outdated_pkgs=() outdated_old=() outdated_new=() outdated_flag=()
+    local pkg
+    for pkg in "${targets[@]}"; do
+        local hintpath="${HINT_DIR%/}/${pkg}.hint"
+        [[ -f "$hintpath" ]] || { echo "skip ${pkg}: no hint file"; continue; }
+        local current; current=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
+        local latest
+        latest=$(nvchecker_latest "$pkg") || { echo "skip ${pkg}: no nvchecker source"; continue; }
+        [[ "$current" == "$latest" ]] && continue   # up to date
+        # determine direction with sort -V
+        local newest; newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)
+        local flag="update"
+        [[ "$newest" == "$current" ]] && flag="?downgrade"
+        outdated_pkgs+=("$pkg")
+        outdated_old+=("$current")
+        outdated_new+=("$latest")
+        outdated_flag+=("$flag")
+    done
+
+    if [[ ${#outdated_pkgs[@]} -eq 0 ]]; then
+        echo "all up to date"
+        return 0
+    fi
+
+    # Report
+    echo ""
+    echo "Updates available:"
+    local i
+    for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
+        local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
+        printf "  %-30s %s -> %s%s\n" "${outdated_pkgs[$i]}" "${outdated_old[$i]}" "${outdated_new[$i]}" "$note"
+    done
+    echo ""
+
+    # Per-package confirm + update
+    local updated=()
+    for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
+        local p="${outdated_pkgs[$i]}"
+        local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
+        local answer
+        read -r -p "${p}  ${outdated_old[$i]} -> ${outdated_new[$i]}${note}. Update? [Y/n] " answer
+        answer="${answer:-Y}"
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            update_hint_file "$p" "${outdated_new[$i]}"
+            nvtake -c "$NVCHECKER_CONFIG" "$p" >&2 || true
+            updated+=("$p")
+        fi
+    done
+
+    # Single slackrepo prompt for everything updated
+    if [[ ${#updated[@]} -gt 0 ]]; then
+        local answer
+        read -r -p "Run 'slackrepo update ${updated[*]}'? [Y/n] " answer
+        answer="${answer:-Y}"
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            slackrepo update "${updated[@]}"
+        fi
+    fi
+}
+
 # Main function
 main() {
     local parsed
-    parsed=$(getopt -o v:f:n:lcdNh \
-        --long version:,hintfile:,new:,list,clean,delete,no-dl,help \
+    parsed=$(getopt -o v:f:n:lcCdNh \
+        --long version:,hintfile:,new:,list,clean,check,delete,no-dl,help \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
@@ -628,6 +715,10 @@ main() {
                 ;;
             --clean|-c)
                 COMMAND="clean"
+                shift
+                ;;
+            --check|-C)
+                COMMAND="check"
                 shift
                 ;;
             --delete|-d)
@@ -676,6 +767,11 @@ main() {
         exit 1
     fi
 
+    if [[ "$COMMAND" == "check" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
+        echo "Error: --check cannot be combined with --version/--hintfile/--new" >&2
+        exit 1
+    fi
+
     case "$COMMAND" in
         help)
             show_help
@@ -685,6 +781,9 @@ main() {
             ;;
         clean)
             clean_bak_files
+            ;;
+        check)
+            check_updates "${DELETE_HINT_FILES[@]}"
             ;;
         update)
             check_wget
