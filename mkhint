@@ -19,6 +19,7 @@ set -e
 REPO_DIR="/var/lib/sbopkg/SBo-danix/"
 HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"
 TMP_DIR="/tmp/mkhint"
+NVCHECKER_CONFIG="$HOME/.config/nvchecker/nvchecker.toml"
 
 # create the temp dir if not existing
 if [[ ! -d $TMP_DIR ]]; then
@@ -42,6 +43,8 @@ Usage:
   ./mkhint --version VERSION --hintfile FILE    Update existing hint file
   ./mkhint --version VERSION --new FILE         Create new hint file
   ./mkhint --new FILE                           Create new hint file (no version)
+  ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
+  ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
   ./mkhint --list                               List hint files
   ./mkhint --clean                              Remove .bak files from HINT_DIR
   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
@@ -54,6 +57,7 @@ Options:
   --new, -n FILE           Create new hint file (required with --version or standalone)
   --list, -l               List all hint files in the default directory
   --clean, -c              Remove all .bak files from HINT_DIR
+  --check, -C [FILE...]    Check hints for upstream updates via nvchecker, update interactively
   --delete, -d FILE        Delete a hint file (and .bak if present)
   --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
   --help, -h               Show this help message
@@ -69,7 +73,7 @@ Exit codes:
   1 - Invalid arguments or missing required options
   2 - File not found
   3 - File already exists
-  4 - wget not available
+  4 - required tool not available (wget / nvchecker / nvtake / jq)
 EOF
 }
 
