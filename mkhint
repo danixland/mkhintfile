@@ -586,6 +586,19 @@ prompt_slackrepo() {
     fi
 }
 
+# Remove a hint file and its .bak if present. No existence guard, no exit —
+# safe to call inside loops. Echoes what was removed.
+_remove_hint() {
+    local full_path="$1"
+    rm "$full_path"
+    echo "Deleted: $full_path"
+    local bak_path="${full_path}.bak"
+    if [[ -f "$bak_path" ]]; then
+        rm "$bak_path"
+        echo "Deleted: $bak_path"
+    fi
+}
+
 # Delete a hint file (and .bak if present)
 delete_hint_file() {
     local file="$1"
@@ -602,14 +615,7 @@ delete_hint_file() {
         exit 2
     fi
 
-    rm "$full_path"
-    echo "Deleted: $full_path"
-
-    local bak_path="${full_path}.bak"
-    if [[ -f "$bak_path" ]]; then
-        rm "$bak_path"
-        echo "Deleted: $bak_path"
-    fi
+    _remove_hint "$full_path"
 }
 
 # Clean .bak files from HINT_DIR
