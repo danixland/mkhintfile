@@ -156,7 +156,7 @@ review_hint_files() {
     local deleted=0 kept=0
     local pkg
     for pkg in "${MATCHED_PKGS[@]}"; do
-        local hint="${HINT_DIR}/${pkg}.hint"
+        local hint="${HINT_DIR%/}/${pkg}.hint"
         local info
         info=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
         [[ -f "$hint" ]] || continue
