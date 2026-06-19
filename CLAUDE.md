@@ -31,7 +31,9 @@ No build step. Direct execution:
 
 ```bash
 bash mkhint --help
-bash mkhint --list
+bash mkhint --list                         # highlight hints whose version matches SBo .info
+bash mkhint --review                       # review matched hints: diff + [K]eep/[D]elete/[S]kip
+bash mkhint --list --review                # show highlighted table, then review
 bash mkhint --version 2.0.1 --hintfile mypackage
 bash mkhint --version 1.2.3 --new mypackage
 bash mkhint --new mypackage            # keep VERSION from .info, no downloads
@@ -87,6 +89,12 @@ Test coverage:
 | T29 | `--check` missing section, accept populate — github section appended, run stops, hint unchanged |
 | T30 | `--check` missing section, decline populate — nothing added |
 | T31 | `--check` missing section, no `.info` in repo — skipped, no section added |
+| T36 | `-l` highlights rows where hint version == SBo version; mismatch plain |
+| T37 | `-R` answer D — matched hint and .bak removed, summary reports deleted 1 |
+| T38 | `-R` answer K — matched hint unchanged |
+| T39 | `-R` empty answer — kept (default) |
+| T40 | `-R` answer S — matched hint unchanged |
+| T41 | `-R` no matched rows — "nothing to review", exit 0 |
 
 When adding new features, add a corresponding test case to `tests/mkhint_test.sh`.
 
@@ -96,6 +104,8 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 - `--new` with existing `.info`: copies `.info` as template, strips `PRGNAM`, `HOMEPAGE`, `MAINTAINER`, `EMAIL`, comments out `REQUIRES`, sets `ARCH="x86_64"`. Keeps `VERSION` from `.info`. If `-v` given, updates version string and recalculates checksums. Also appends an nvchecker `[section]` to the config, auto-detecting github/pypi source or providing a commented stub.
 - `--new` when hint already exists: backs up old, creates empty skeleton.
 - `--hintfile` with no `-v`: queries nvchecker for latest version, shows current vs. latest, prompts to accept/override/decline. After accepting, runs `nvtake` to sync nvchecker's keyfile.
+- `--list` / `-l`: lists hints with `HintVer`/`SBOVer`; rows where the two are byte-equal are highlighted (color only on a TTY; plain when piped). Adds a legend when any row matched.
+- `--review` / `-R`: iterates only the matched (highlighted) hints. For each, shows the hint side-by-side with its `.info` (`git diff --no-index` if git present, else `diff -y`), then prompts `[K]eep / [D]elete / [S]kip` (default Keep). Delete removes the hint and its `.bak` via `_remove_hint`. Prints a deleted/kept summary. `-l` and `-R` combine: `-lR` shows the table first, then reviews. No matches → "nothing to review", exit 0.
 - `--check` / `-C`: runs nvchecker for all (or named) hints, reports outdated packages with current → latest versions, prompts per-package to update, applies updates with `nvtake`, then prompts single `slackrepo update` for all updated packages. Hints with no `[pkg]` section in `nvchecker.toml` are collected and, after the scan, a single prompt offers to populate the config via `add_nvchecker_section` (github/pypi autodetect, else stub); on accept it prints a "review and re-run" message and stops the run without applying updates. Packages whose `.info` is not found in `REPO_DIR` are skipped.
 - `--no-dl` / `-N`: downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` after `MD5SUM_x86_64=`. Works with `--hintfile` or `--new`. Error if used alone.
 - `--delete` / `-d`: removes hint file and `.bak` if present. Accepts multiple package names. Exits 2 on first missing file.
