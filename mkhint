@@ -509,8 +509,9 @@ build_multiline_value() {
 suggest_version() {
     local pkg="$1"
 
-    # Refresh nvchecker results (stderr only; keep stdout clean for the echo)
-    nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+    # Refresh nvchecker results (stderr only; keep stdout clean for the echo).
+    # -e limits the run to this entry instead of scanning the whole config.
+    nvchecker -c "$NVCHECKER_CONFIG" -e "$pkg" >&2 || true
 
     local latest
     latest=$(nvchecker_latest "$pkg") || {
@@ -731,9 +732,14 @@ check_updates() {
         done
     fi
 
-    # Refresh nvchecker results once for everything
+    # Refresh nvchecker results. With exactly one explicit target, -e limits
+    # the run to that entry; otherwise scan the whole config in one pass.
     echo "Running nvchecker..."
-    nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+    if [[ ${#targets[@]} -eq 1 && $# -gt 0 ]]; then
+        nvchecker -c "$NVCHECKER_CONFIG" -e "${targets[0]}" >&2 || true
+    else
+        nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+    fi
 
     # Classify each target
     local outdated_pkgs=() outdated_old=() outdated_new=() outdated_flag=()

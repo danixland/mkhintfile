@@ -163,9 +163,10 @@ EOF
 mock_nvchecker_tools() {
     mkdir -p "$MOCK_BASE/bin"
 
-    # nvchecker: no-op success (keyfile is pre-seeded by setup/tests)
-    cat > "$MOCK_BASE/bin/nvchecker" << 'EOF'
+    # nvchecker: record invocations, no-op success (keyfile pre-seeded by setup/tests)
+    cat > "$MOCK_BASE/bin/nvchecker" << EOF
 #!/bin/bash
+echo "nvchecker \$*" >> "$MOCK_BASE/nvchecker.log"
 exit 0
 EOF
     chmod +x "$MOCK_BASE/bin/nvchecker"
@@ -837,6 +838,38 @@ assert_exit_code "no-match review exits 0" 0 "$code"
 echo "$out" | grep -q "nothing to review" \
     && { echo "  PASS: nothing-to-review message"; (( PASS++ )); } \
     || { echo "  FAIL: message missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T41 msg"); }
+
+# ── T42: --check single package → nvchecker called with -e <pkg> ──────────────
+echo ""
+echo "T42: --check one package runs nvchecker -e <pkg>"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak "$MOCK_BASE/nvchecker.log" 2>/dev/null
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.5.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+run_mkhint -C curl < <(printf '\n') > /dev/null 2>&1
+assert_contains     "nvchecker run with -e curl"  "$MOCK_BASE/nvchecker.log" '\-e curl'
+
+# ── T43: --check two packages → nvchecker scans all (no -e) ───────────────────
+echo ""
+echo "T43: --check two packages runs nvchecker without -e (full scan)"
+rm -f "$MOCK_BASE/nvchecker.log" 2>/dev/null
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.5.0" }, "clion": { "version": "2025.4" } } }
+EOF
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="2025.4"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+EOF
+run_mkhint -C curl clion < <(printf '\n') > /dev/null 2>&1
+assert_not_contains "two-pkg check has no -e"     "$MOCK_BASE/nvchecker.log" '\-e '
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown

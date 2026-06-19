@@ -101,10 +101,25 @@ When updating a hint with multiline DOWNLOAD, mkhint:
 
 ### List hint files
 
+Lists each hint file with its `HintVer` (version in the hint) and `SBOVer` (version in the repository `.info`). Rows where the two are byte-equal are highlighted, so you can see at a glance which hints are now redundant with the upstream SBo version. Color is used only on a TTY; piped output is plain. A legend is printed when any row matched.
+
 ```bash
 mkhint --list
 mkhint -l
 ```
+
+### Review matched hint files
+
+Iterates only the matched (highlighted) hints from `--list` — those whose version equals the SBo `.info` version. For each, it shows the hint side by side with its `.info` (`git diff --no-index` if git is available, otherwise `diff -y`), then prompts `[K]eep / [D]elete / [S]kip` (default Keep). Delete removes the hint and its `.bak`. A deleted/kept summary is printed at the end.
+
+```bash
+mkhint --review
+mkhint -R
+mkhint --list --review     # show the highlighted table first, then review
+mkhint -lR                 # same, combined
+```
+
+If no hints match, it prints "nothing to review" and exits 0.
 
 ### Delete a hint file
 
@@ -146,6 +161,8 @@ mkhint --check pkg1 pkg2          # check specific packages
 mkhint -C                         # short form
 ```
 
+When exactly one package is given, mkhint runs `nvchecker -e <package>` so only that entry is scanned instead of the whole `nvchecker.toml`. With two or more packages, or no arguments, it does a single full scan. (`--hintfile` without `-v` likewise queries just its one entry via `-e`.)
+
 If any scanned hint file has no nvchecker source configured, `--check` lists those packages and offers to populate `nvchecker.toml` for them in one prompt — auto-detecting github/pypi from the SBo `.info`, otherwise writing a commented stub to fill in. After populating, it asks you to review the file (fill any stubs) and re-run `mkhint -C`. Packages with no matching `.info` in the repository are skipped.
 
 ### Help
@@ -183,4 +200,4 @@ mkhint -h
 - If DOWNLOAD or DOWNLOAD_x86_64 is `UNSUPPORTED` or `UNTESTED`, that URL is skipped and its MD5SUM is left unchanged.
 - `--no-dl` / `-N` does **not** skip downloads — it downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` to the hint file.
 - After a successful `--hintfile` update, mkhint prompts `Run 'slackrepo update <package>'? [Y/n]`. Enter or `y` runs slackrepo immediately; `n` skips.
-- Bash completion for `-f`/`--hintfile`, `-n`/`--new`, `-d`/`--delete`, and `-C`/`--check` autocompletes package names from their respective directories. When `-f <package>` is already on the command line, `-v [TAB]` suggests the current `VERSION` from that package's hint file. If the hint file is absent, no version is suggested. Short flags (`-v`, `-f`, `-n`, `-l`, `-c`, `-d`, `-C`, `-N`, `-h`) are also completed.
+- Bash completion for `-f`/`--hintfile`, `-n`/`--new`, `-d`/`--delete`, and `-C`/`--check` autocompletes package names from their respective directories. When `-f <package>` is already on the command line, `-v [TAB]` suggests the current `VERSION` from that package's hint file. If the hint file is absent, no version is suggested. Short flags (`-v`, `-f`, `-n`, `-l`, `-R`, `-c`, `-d`, `-C`, `-N`, `-h`) and their long forms (including `--review`) are also completed.
