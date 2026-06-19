@@ -775,6 +775,69 @@ echo "$out" | grep "clion.hint" | grep -q $'\033\[33m' \
     && { echo "  FAIL: clion wrongly highlighted"; (( FAIL++ )); ERRORS+=("T36 false hl"); } \
     || { echo "  PASS: clion row plain"; (( PASS++ )); }
 
+# ── T37: -R delete a matched hint ─────────────────────────────────────────────
+echo ""
+echo "T37: -R answer D → matched hint and .bak removed"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+touch "$MOCK_HINT/curl.hint.bak"
+out=$(run_mkhint -R < <(printf 'D\n') 2>&1)
+assert_file_not_exists "curl hint deleted"        "$MOCK_HINT/curl.hint"
+assert_file_not_exists "curl bak deleted"         "$MOCK_HINT/curl.hint.bak"
+echo "$out" | grep -q "deleted 1" \
+    && { echo "  PASS: summary reports deleted 1"; (( PASS++ )); } \
+    || { echo "  FAIL: summary wrong"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T37 summary"); }
+
+# ── T38: -R keep a matched hint ───────────────────────────────────────────────
+echo ""
+echo "T38: -R answer K → matched hint unchanged"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+run_mkhint -R < <(printf 'K\n') >/dev/null 2>&1
+assert_file_exists "curl hint kept" "$MOCK_HINT/curl.hint"
+
+# ── T39: -R empty answer = keep ───────────────────────────────────────────────
+echo ""
+echo "T39: -R empty answer → kept (default)"
+run_mkhint -R < <(printf '\n') >/dev/null 2>&1
+assert_file_exists "curl hint kept on empty" "$MOCK_HINT/curl.hint"
+
+# ── T40: -R skip a matched hint ───────────────────────────────────────────────
+echo ""
+echo "T40: -R answer S → matched hint unchanged"
+run_mkhint -R < <(printf 'S\n') >/dev/null 2>&1
+assert_file_exists "curl hint kept on skip" "$MOCK_HINT/curl.hint"
+
+# ── T41: -R with no matches → nothing to review, exit 0 ───────────────────────
+echo ""
+echo "T41: -R no matched rows → nothing to review"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# clion hint version differs from its .info → no match
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="9.9.9"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+EOF
+set +e
+out=$(run_mkhint -R < <(printf '\n') 2>&1)
+code=$?
+set -e
+assert_exit_code "no-match review exits 0" 0 "$code"
+echo "$out" | grep -q "nothing to review" \
+    && { echo "  PASS: nothing-to-review message"; (( PASS++ )); } \
+    || { echo "  FAIL: message missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T41 msg"); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

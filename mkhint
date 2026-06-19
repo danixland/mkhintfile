@@ -33,6 +33,8 @@ HINT_FILE=""
 NEW_HINT_FILE=""
 DELETE_HINT_FILES=()
 MATCHED_PKGS=()
+SHOW_LIST=""
+RUN_REVIEW=""
 COMMAND=""
 NO_DL=0
 
@@ -48,6 +50,7 @@ Usage:
   ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
   ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
   ./mkhint --list                               List hint files
+  ./mkhint --review                             Review hints matching SBo version, keep/delete each
   ./mkhint --clean                              Remove .bak files from HINT_DIR
   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
   ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
@@ -58,6 +61,7 @@ Options:
   --hintfile, -f FILE      Path to existing hint file (required with --version)
   --new, -n FILE           Create new hint file (required with --version or standalone)
   --list, -l               List all hint files in the default directory
+  --review, -R             Review hints whose version matches the SBo .info; diff + keep/delete
   --clean, -c              Remove all .bak files from HINT_DIR
   --check, -C [FILE...]    Check hints for upstream updates via nvchecker, update interactively
   --delete, -d FILE        Delete a hint file (and .bak if present)
@@ -139,6 +143,52 @@ list_hint_files() {
     if [[ $matched -gt 0 && -n "$c_on" ]]; then
         echo "(highlighted = hint version matches SBo .info)"
     fi
+}
+
+# Show each matched hint side-by-side with its .info, prompt Keep/Delete/Skip.
+# Relies on MATCHED_PKGS populated by list_hint_files.
+review_hint_files() {
+    if [[ ${#MATCHED_PKGS[@]} -eq 0 ]]; then
+        echo "No hints match their SBo version; nothing to review."
+        return 0
+    fi
+
+    local deleted=0 kept=0
+    local pkg
+    for pkg in "${MATCHED_PKGS[@]}"; do
+        local hint="${HINT_DIR}/${pkg}.hint"
+        local info
+        info=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
+        [[ -f "$hint" ]] || continue
+
+        echo ""
+        echo "=== $pkg ==="
+        if command -v git &>/dev/null; then
+            git diff --no-index --color=auto "$hint" "$info" || true
+        else
+            diff -y --width="${COLUMNS:-160}" "$hint" "$info" || true
+        fi
+
+        local ans
+        read -r -p "Review $pkg: [K]eep / [D]elete / [S]kip (default Keep): " ans
+        case "$ans" in
+            [Dd])
+                _remove_hint "$hint"
+                deleted=$((deleted + 1))
+                ;;
+            [Ss]|[Kk]|"")
+                echo "Kept: $pkg"
+                kept=$((kept + 1))
+                ;;
+            *)
+                echo "Unrecognised answer; keeping $pkg"
+                kept=$((kept + 1))
+                ;;
+        esac
+    done
+
+    echo ""
+    echo "Reviewed ${#MATCHED_PKGS[@]} hint(s): deleted $deleted, kept $kept."
 }
 
 # Validate wget availability
@@ -781,8 +831,8 @@ check_updates() {
 # Main function
 main() {
     local parsed
-    parsed=$(getopt -o v:f:n:lcCdNh \
-        --long version:,hintfile:,new:,list,clean,check,delete,no-dl,help \
+    parsed=$(getopt -o v:f:n:lcCdNhR \
+        --long version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
@@ -801,7 +851,11 @@ main() {
                 shift 2
                 ;;
             --list|-l)
-                COMMAND="list"
+                SHOW_LIST=1
+                shift
+                ;;
+            --review|-R)
+                RUN_REVIEW=1
                 shift
                 ;;
             --clean|-c)
@@ -863,12 +917,19 @@ main() {
         exit 1
     fi
 
+    if [[ -n "$SHOW_LIST" || -n "$RUN_REVIEW" ]]; then
+        [[ -n "$SHOW_LIST" ]] && list_hint_files
+        if [[ -n "$RUN_REVIEW" ]]; then
+            # ensure MATCHED_PKGS is populated even when -l was not given
+            [[ -z "$SHOW_LIST" ]] && list_hint_files >/dev/null
+            review_hint_files
+        fi
+        exit $?
+    fi
+
     case "$COMMAND" in
         help)
             show_help
-            ;;
-        list)
-            list_hint_files
             ;;
         clean)
             clean_bak_files
