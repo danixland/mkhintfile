@@ -744,6 +744,37 @@ EOF
 run_mkhint -C curl < <(printf 'Y\nn\n')
 assert_contains "relative-path keyfile found → curl updated" "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
 
+# ── T36: -l highlights rows where hint version == SBo version ─────────────────
+echo ""
+echo "T36: -l highlights matching version rows, plain row for mismatch"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# curl matches its .info (8.5.0); clion differs (hint 9.9.9 vs .info 2025.3)
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="9.9.9"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+EOF
+# force color so the highlight is observable through the $(...) pipe
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
+# matched curl row carries the color start code (ESC[33m); legend present
+echo "$out" | grep -q $'\033\[33m.*curl.hint' \
+    && { echo "  PASS: curl row highlighted"; (( PASS++ )); } \
+    || { echo "  FAIL: curl row not highlighted"; echo "$out" | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T36 highlight"); }
+echo "$out" | grep -q "highlighted = hint version matches" \
+    && { echo "  PASS: legend shown"; (( PASS++ )); } \
+    || { echo "  FAIL: legend missing"; (( FAIL++ )); ERRORS+=("T36 legend"); }
+# clion row must NOT carry the color start code
+echo "$out" | grep "clion.hint" | grep -q $'\033\[33m' \
+    && { echo "  FAIL: clion wrongly highlighted"; (( FAIL++ )); ERRORS+=("T36 false hl"); } \
+    || { echo "  PASS: clion row plain"; (( PASS++ )); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

@@ -32,6 +32,7 @@ VERSION=""
 HINT_FILE=""
 NEW_HINT_FILE=""
 DELETE_HINT_FILES=()
+MATCHED_PKGS=()
 COMMAND=""
 NO_DL=0
 
@@ -85,12 +86,23 @@ list_hint_files() {
         exit 2
     fi
 
+    # Color only on a TTY, or when forced for tests. tput optional.
+    local c_on="" c_off=""
+    if [[ -n "$MKHINT_FORCE_COLOR" || -t 1 ]]; then
+        if command -v tput &>/dev/null && tput setaf 3 &>/dev/null; then
+            c_on=$(tput setaf 3); c_off=$(tput sgr0)
+        else
+            c_on=$'\033[33m'; c_off=$'\033[0m'
+        fi
+    fi
+
     echo "Hint files in: $HINT_DIR"
     echo "======================================================="
     printf "%-40s  %10s  %10s  %-20s  %s\n" "File" "HintVer" "SBOVer" "Category" "Created"
     echo "-------------------------------------------------------"
 
-    local count=0
+    MATCHED_PKGS=()
+    local count=0 matched=0
     for file in "$HINT_DIR"/*.hint; do
         if [[ -f "$file" ]]; then
             local VER=$(grep "^VERSION" "$file" |cut -d '"' -f2)
@@ -105,7 +117,15 @@ list_hint_files() {
                 category=$(basename "$(dirname "$(dirname "$info_file")")")
             fi
             local date=$(stat -c "%y" "$file" | cut -d'.' -f1)
-            printf "%-40s  %10s  %10s  %-20s  %s\n" "$name" "$VER" "$SBO_VER" "$category" "$date"
+            local row
+            row=$(printf "%-40s  %10s  %10s  %-20s  %s" "$name" "$VER" "$SBO_VER" "$category" "$date")
+            if [[ -n "$VER" && "$VER" == "$SBO_VER" ]]; then
+                printf "%s%s%s\n" "$c_on" "$row" "$c_off"
+                MATCHED_PKGS+=("$pkg")
+                matched=$((matched + 1))
+            else
+                printf "%s\n" "$row"
+            fi
             count=$((count + 1))
         fi
     done
@@ -116,6 +136,9 @@ list_hint_files() {
 
     echo "======================================================="
     echo "Total: $count file(s)"
+    if [[ $matched -gt 0 && -n "$c_on" ]]; then
+        echo "(highlighted = hint version matches SBo .info)"
+    fi
 }
 
 # Validate wget availability
