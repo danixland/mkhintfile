@@ -10,6 +10,20 @@ _mkhintfile_completions() {
 
     local all_flags="--version -v --hintfile -f --new -n --list -l --review -R --clean -c --check -C --delete -d --no-dl -N --help -h"
 
+    # -R/--review takes any number of hint names; complete them repeatedly.
+    local w in_review=""
+    for w in "${COMP_WORDS[@]:1}"; do
+        [[ "$w" == "-R" || "$w" == "--review" ]] && in_review=1
+    done
+    if [[ -n "$in_review" && "$cur" != -* ]]; then
+        local -a rwords=()
+        for f in "$hint_dir"/*.hint; do
+            [[ -f "$f" ]] && rwords+=("$(basename "${f%.hint}")")
+        done
+        COMPREPLY=($(compgen -W "${rwords[*]}" -- "$cur"))
+        return
+    fi
+
     case "$prev" in
         --new|-n)
             local -a words=()
