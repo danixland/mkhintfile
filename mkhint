@@ -921,9 +921,15 @@ main() {
         esac
     done
 
-    # Collect remaining positional args as delete targets
+    # Collect remaining positional args.
+    # When -R is active and no other command set, they are review targets;
+    # otherwise they are delete targets.
     while [[ $# -gt 0 ]]; do
-        DELETE_HINT_FILES+=("$1")
+        if [[ -n "$RUN_REVIEW" && -z "$COMMAND" ]]; then
+            REVIEW_PKGS+=("$1")
+        else
+            DELETE_HINT_FILES+=("$1")
+        fi
         shift
     done
 
@@ -951,9 +957,13 @@ main() {
     if [[ -n "$SHOW_LIST" || -n "$RUN_REVIEW" ]]; then
         [[ -n "$SHOW_LIST" ]] && list_hint_files
         if [[ -n "$RUN_REVIEW" ]]; then
-            # ensure MATCHED_PKGS is populated even when -l was not given
-            [[ -z "$SHOW_LIST" ]] && list_hint_files >/dev/null
-            review_hint_files
+            if [[ ${#REVIEW_PKGS[@]} -gt 0 ]]; then
+                review_hint_files "${REVIEW_PKGS[@]}"
+            else
+                # ensure MATCHED_PKGS is populated even when -l was not given
+                [[ -z "$SHOW_LIST" ]] && list_hint_files >/dev/null
+                review_hint_files
+            fi
         fi
         exit $?
     fi
