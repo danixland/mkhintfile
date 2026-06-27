@@ -33,6 +33,7 @@ HINT_FILE=""
 NEW_HINT_FILE=""
 DELETE_HINT_FILES=()
 MATCHED_PKGS=()
+REVIEW_PKGS=()
 SHOW_LIST=""
 RUN_REVIEW=""
 COMMAND=""
@@ -145,50 +146,74 @@ list_hint_files() {
     fi
 }
 
-# Show each matched hint side-by-side with its .info, prompt Keep/Delete/Skip.
-# Relies on MATCHED_PKGS populated by list_hint_files.
-review_hint_files() {
-    if [[ ${#MATCHED_PKGS[@]} -eq 0 ]]; then
-        echo "No hints match their SBo version; nothing to review."
-        return 0
+# Diff one hint against its .info and prompt Keep/Delete/Skip.
+# Human-facing output goes to stderr; echoes only "deleted" or "kept" on stdout
+# so the caller can capture the result.
+_review_one_hint() {
+    local pkg="$1"
+    local hint="${HINT_DIR%/}/${pkg}.hint"
+    local info
+    info=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
+
+    echo "" >&2
+    echo "=== $pkg ===" >&2
+    if command -v git &>/dev/null; then
+        git diff --no-index --color=auto "$hint" "$info" >&2 || true
+    else
+        diff -y --width="${COLUMNS:-160}" "$hint" "$info" >&2 || true
     fi
 
-    local deleted=0 kept=0
-    local pkg
-    for pkg in "${MATCHED_PKGS[@]}"; do
-        local hint="${HINT_DIR%/}/${pkg}.hint"
-        local info
-        info=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
-        [[ -f "$hint" ]] || continue
+    local ans
+    read -r -p "Review $pkg: [K]eep / [D]elete / [S]kip (default Keep): " ans
+    case "$ans" in
+        [Dd])
+            _remove_hint "$hint" >&2
+            echo deleted
+            ;;
+        [Ss]|[Kk]|"")
+            echo "Kept: $pkg" >&2
+            echo kept
+            ;;
+        *)
+            echo "Unrecognised answer; keeping $pkg" >&2
+            echo kept
+            ;;
+    esac
+}
 
-        echo ""
-        echo "=== $pkg ==="
-        if command -v git &>/dev/null; then
-            git diff --no-index --color=auto "$hint" "$info" || true
-        else
-            diff -y --width="${COLUMNS:-160}" "$hint" "$info" || true
+# Review hints. With package args: review each named hint (any version),
+# validating existence first (exit 2 on a missing hint). With no args: review
+# MATCHED_PKGS (populated by list_hint_files).
+review_hint_files() {
+    local -a pkgs
+    if [[ $# -gt 0 ]]; then
+        pkgs=("$@")
+        local p
+        for p in "${pkgs[@]}"; do
+            if [[ ! -f "${HINT_DIR%/}/${p}.hint" ]]; then
+                echo "Error: hint file not found: ${HINT_DIR%/}/${p}.hint" >&2
+                exit 2
+            fi
+        done
+    else
+        if [[ ${#MATCHED_PKGS[@]} -eq 0 ]]; then
+            echo "No hints match their SBo version; nothing to review."
+            return 0
         fi
+        pkgs=("${MATCHED_PKGS[@]}")
+    fi
 
-        local ans
-        read -r -p "Review $pkg: [K]eep / [D]elete / [S]kip (default Keep): " ans
-        case "$ans" in
-            [Dd])
-                _remove_hint "$hint"
-                deleted=$((deleted + 1))
-                ;;
-            [Ss]|[Kk]|"")
-                echo "Kept: $pkg"
-                kept=$((kept + 1))
-                ;;
-            *)
-                echo "Unrecognised answer; keeping $pkg"
-                kept=$((kept + 1))
-                ;;
+    local deleted=0 kept=0 pkg result
+    for pkg in "${pkgs[@]}"; do
+        result=$(_review_one_hint "$pkg")
+        case "$result" in
+            deleted) deleted=$((deleted + 1)) ;;
+            *)       kept=$((kept + 1)) ;;
         esac
     done
 
     echo ""
-    echo "Reviewed ${#MATCHED_PKGS[@]} hint(s): deleted $deleted, kept $kept."
+    echo "Reviewed ${#pkgs[@]} hint(s): deleted $deleted, kept $kept."
 }
 
 # Validate wget availability
