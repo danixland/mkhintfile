@@ -108,18 +108,19 @@ mkhint --list
 mkhint -l
 ```
 
-### Review matched hint files
+### Review hint files
 
-Iterates only the matched (highlighted) hints from `--list` — those whose version equals the SBo `.info` version. For each, it shows the hint side by side with its `.info` (`git diff --no-index` if git is available, otherwise `diff -y`), then prompts `[K]eep / [D]elete / [S]kip` (default Keep). Delete removes the hint and its `.bak`. A deleted/kept summary is printed at the end.
+With no arguments, iterates only the matched (highlighted) hints from `--list` — those whose version equals the SBo `.info` version. With explicit package names (`-R foo bar`), reviews each named hint regardless of version match; a missing hint exits 2. For each, it shows the hint side by side with its `.info` (`git diff --no-index` if git is available, otherwise `diff -y`), then prompts `[K]eep / [D]elete / [S]kip` (default Keep). Delete removes the hint and its `.bak`. A summary counting the hints actually reviewed is printed at the end.
 
 ```bash
 mkhint --review
 mkhint -R
+mkhint -R foo bar          # review the named hints, any version
 mkhint --list --review     # show the highlighted table first, then review
 mkhint -lR                 # same, combined
 ```
 
-If no hints match, it prints "nothing to review" and exits 0.
+With no arguments and no hints matching, it prints "nothing to review" and exits 0.
 
 ### Delete a hint file
 
