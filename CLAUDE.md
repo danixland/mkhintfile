@@ -97,6 +97,10 @@ Test coverage:
 | T41 | `-R` no matched rows — "nothing to review", exit 0 |
 | T42 | `--check` single pkg — nvchecker called with `-e <pkg>` |
 | T43 | `--check` two pkgs — nvchecker full scan, no `-e` |
+| T44 | `-R <pkg>` non-matched hint — diff shown, Keep leaves it |
+| T45 | `-R <pkg>` answer D — named hint and .bak removed |
+| T46 | `-R <pkg1> <pkg2>` — both reviewed, summary "Reviewed 2" |
+| T47 | `-R <missing>` — exit 2 |
 
 When adding new features, add a corresponding test case to `tests/mkhint_test.sh`.
 
@@ -107,7 +111,7 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 - `--new` when hint already exists: backs up old, creates empty skeleton.
 - `--hintfile` with no `-v`: queries nvchecker for latest version, shows current vs. latest, prompts to accept/override/decline. After accepting, runs `nvtake` to sync nvchecker's keyfile.
 - `--list` / `-l`: lists hints with `HintVer`/`SBOVer`; rows where the two are byte-equal are highlighted (color only on a TTY; plain when piped). Adds a legend when any row matched.
-- `--review` / `-R`: iterates only the matched (highlighted) hints. For each, shows the hint side-by-side with its `.info` (`git diff --no-index` if git present, else `diff -y`), then prompts `[K]eep / [D]elete / [S]kip` (default Keep). Delete removes the hint and its `.bak` via `_remove_hint`. Prints a deleted/kept summary. `-l` and `-R` combine: `-lR` shows the table first, then reviews. No matches → "nothing to review", exit 0.
+- `--review` / `-R`: with no package args, iterates only the matched (highlighted) hints. With explicit package names (`-R foo bar`), reviews each named hint regardless of version match (existence required: missing hint → exit 2). For each, shows the hint side-by-side with its `.info` (`git diff --no-index` if git present, else `diff -y`), then prompts `[K]eep / [D]elete / [S]kip` (default Keep). Delete removes the hint and its `.bak` via `_remove_hint`. Prints a deleted/kept summary counting hints actually reviewed. `-l` and `-R` combine: `-lR` shows the table first, then reviews. Bare `-R` with no matches → "nothing to review", exit 0. Per-hint logic lives in `_review_one_hint`; `review_hint_files` drives it from either the named list or `MATCHED_PKGS`.
 - `--check` / `-C`: runs nvchecker for all (or named) hints. With exactly one explicit package it uses `nvchecker -e <pkg>` to skip scanning the whole config; with two+ packages or no args it does one full scan. (`--hintfile` with no `-v` also queries via `nvchecker -e <pkg>`.) reports outdated packages with current → latest versions, prompts per-package to update, applies updates with `nvtake`, then prompts single `slackrepo update` for all updated packages. Hints with no `[pkg]` section in `nvchecker.toml` are collected and, after the scan, a single prompt offers to populate the config via `add_nvchecker_section` (github/pypi autodetect, else stub); on accept it prints a "review and re-run" message and stops the run without applying updates. Packages whose `.info` is not found in `REPO_DIR` are skipped.
 - `--no-dl` / `-N`: downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` after `MD5SUM_x86_64=`. Works with `--hintfile` or `--new`. Error if used alone.
 - `--delete` / `-d`: removes hint file and `.bak` if present. Accepts multiple package names. Exits 2 on first missing file.

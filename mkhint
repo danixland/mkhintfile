@@ -52,6 +52,7 @@ Usage:
   ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
   ./mkhint --list                               List hint files
   ./mkhint --review                             Review hints matching SBo version, keep/delete each
+  ./mkhint --review FILE...                      Review named hints (any version), keep/delete each
   ./mkhint --clean                              Remove .bak files from HINT_DIR
   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
   ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
@@ -62,7 +63,7 @@ Options:
   --hintfile, -f FILE      Path to existing hint file (required with --version)
   --new, -n FILE           Create new hint file (required with --version or standalone)
   --list, -l               List all hint files in the default directory
-  --review, -R             Review hints whose version matches the SBo .info; diff + keep/delete
+  --review, -R [FILE...]   Review hints; no args = matched only, FILE... = named hints (any version)
   --clean, -c              Remove all .bak files from HINT_DIR
   --check, -C [FILE...]    Check hints for upstream updates via nvchecker, update interactively
   --delete, -d FILE        Delete a hint file (and .bak if present)
