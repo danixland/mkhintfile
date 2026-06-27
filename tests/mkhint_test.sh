@@ -871,6 +871,72 @@ EOF
 run_mkhint -C curl clion < <(printf '\n') > /dev/null 2>&1
 assert_not_contains "two-pkg check has no -e"     "$MOCK_BASE/nvchecker.log" '\-e '
 
+# ── T44: -R <pkg> reviews a non-matched hint, Keep leaves it ──────────────────
+echo ""
+echo "T44: -R <pkg> on a non-matched hint → diff shown, Keep leaves it"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# clion hint version differs from its .info → not matched by bare -R
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="9.9.9"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+EOF
+out=$(run_mkhint -R clion < <(printf 'K\n') 2>&1)
+assert_file_exists "named non-matched hint kept" "$MOCK_HINT/clion.hint"
+echo "$out" | grep -q "=== clion ===" \
+    && { echo "  PASS: diff header shown for named hint"; (( PASS++ )); } \
+    || { echo "  FAIL: diff header missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T44 header"); }
+
+# ── T45: -R <pkg> answer D → named hint and .bak removed ──────────────────────
+echo ""
+echo "T45: -R <pkg> answer D → named hint and .bak removed"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="9.9.9"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+EOF
+touch "$MOCK_HINT/clion.hint.bak"
+out=$(run_mkhint -R clion < <(printf 'D\n') 2>&1)
+assert_file_not_exists "named hint deleted"  "$MOCK_HINT/clion.hint"
+assert_file_not_exists "named bak deleted"   "$MOCK_HINT/clion.hint.bak"
+echo "$out" | grep -q "deleted 1" \
+    && { echo "  PASS: summary reports deleted 1"; (( PASS++ )); } \
+    || { echo "  FAIL: summary wrong"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T45 summary"); }
+
+# ── T46: -R <pkg1> <pkg2> → both reviewed ────────────────────────────────────
+echo ""
+echo "T46: -R two packages → both reviewed, summary counts 2"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="9.9.9"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="9.9.9"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+EOF
+out=$(run_mkhint -R clion curl < <(printf 'K\nK\n') 2>&1)
+echo "$out" | grep -q "Reviewed 2 hint" \
+    && { echo "  PASS: summary reports 2 reviewed"; (( PASS++ )); } \
+    || { echo "  FAIL: summary count wrong"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T46 count"); }
+
+# ── T47: -R <missing> → exit 2 ───────────────────────────────────────────────
+echo ""
+echo "T47: -R missing package → exit 2"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+set +e
+out=$(run_mkhint -R nope < <(printf 'K\n') 2>&1)
+code=$?
+set -e
+assert_exit_code "missing named hint exits 2" 2 "$code"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
