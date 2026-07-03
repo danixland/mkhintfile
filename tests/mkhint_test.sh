@@ -937,6 +937,44 @@ code=$?
 set -e
 assert_exit_code "missing named hint exits 2" 2 "$code"
 
+# ── T48: --check upstream dashed date == packaged underscore date → current ────
+echo ""
+echo "T48: --check upstream 2026-06-02 vs hint 2026_06_02 → treated as current"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "2026-06-02" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="2026_06_02"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-2026_06_02.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+out=$(run_mkhint -C curl < <(printf '\n') 2>&1)
+echo "$out" | grep -q "all up to date" \
+    && { echo "  PASS: dashed upstream == underscore packaged"; (( PASS++ )); } \
+    || { echo "  FAIL: offered an update for equivalent version"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T48 dash/underscore equivalence"); }
+
+# ── T49: --check accept dashed upstream update → hint stores underscore form ────
+echo ""
+echo "T49: --check accept 2026-07-01 → hint VERSION written as 2026_07_01"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "2026-07-01" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="2026_06_02"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-2026_06_02.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+# accept update (Y), decline slackrepo (n)
+run_mkhint -C curl < <(printf 'Y\nn\n')
+assert_contains "hint stores normalized version" "$MOCK_HINT/curl.hint" 'VERSION="2026_07_01"'
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

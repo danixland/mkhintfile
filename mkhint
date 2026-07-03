@@ -263,6 +263,13 @@ _nvchecker_newver_path() {
 }
 
 # Echo the latest version nvchecker found for a package, or return non-zero
+# Normalize an upstream version to our packaging convention: '-' is illegal in
+# a SlackBuild version (breaks PRGNAM parsing), so we store it as '_'. Compare
+# the normalized forms so e.g. upstream 2026-06-02 == packaged 2026_06_02.
+_normalize_version() {
+    printf '%s\n' "${1//-/_}"
+}
+
 # Usage: latest=$(nvchecker_latest pkg) || handle "no version"
 nvchecker_latest() {
     local pkg="$1"
@@ -544,6 +551,7 @@ suggest_version() {
         echo "Error: no nvchecker result for '$pkg'. Add/fix its [${pkg}] section in $NVCHECKER_CONFIG" >&2
         return 1
     }
+    latest=$(_normalize_version "$latest")
 
     # Read current version from the hint file (best effort, for display)
     local hintpath="${HINT_DIR%/}/${pkg}.hint"
@@ -785,14 +793,15 @@ check_updates() {
             fi
             continue
         fi
-        [[ "$current" == "$latest" ]] && continue   # up to date
-        # determine direction with sort -V
-        local newest; newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)
+        local latest_norm; latest_norm=$(_normalize_version "$latest")
+        [[ "$current" == "$latest_norm" ]] && continue   # up to date
+        # determine direction with sort -V (compare normalized forms)
+        local newest; newest=$(printf '%s\n%s\n' "$current" "$latest_norm" | sort -V | tail -1)
         local flag="update"
         [[ "$newest" == "$current" ]] && flag="?downgrade"
         outdated_pkgs+=("$pkg")
         outdated_old+=("$current")
-        outdated_new+=("$latest")
+        outdated_new+=("$latest_norm")
         outdated_flag+=("$flag")
     done
 
