@@ -111,8 +111,8 @@ list_hint_files() {
     local count=0 matched=0
     for file in "$HINT_DIR"/*.hint; do
         if [[ -f "$file" ]]; then
-            local VER=$(grep "^VERSION" "$file" |cut -d '"' -f2)
-            local name=$(basename "$file")
+            local VER; VER=$(grep "^VERSION" "$file" |cut -d '"' -f2)
+            local name; name=$(basename "$file")
             local pkg="${name%.hint}"
             local info_file
             info_file=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
@@ -122,7 +122,7 @@ list_hint_files() {
                 SBO_VER=$(grep "^VERSION" "$info_file" | cut -d '"' -f2)
                 category=$(basename "$(dirname "$(dirname "$info_file")")")
             fi
-            local date=$(stat -c "%y" "$file" | cut -d'.' -f1)
+            local date; date=$(stat -c "%y" "$file" | cut -d'.' -f1)
             local row
             row=$(printf "%-40s  %10s  %10s  %-20s  %s" "$name" "$VER" "$SBO_VER" "$category" "$date")
             if [[ -n "$VER" && "$VER" == "$SBO_VER" ]]; then
@@ -281,7 +281,7 @@ download_file() {
     local dlfile="${TMP_DIR}/download"
 
     if [[ -f $dlfile ]]; then
-        rm $dlfile
+        rm "$dlfile"
     fi
 
     # Download the file
@@ -290,14 +290,14 @@ download_file() {
     fi
 
     # calculate md5
-    local md5=$(md5sum "$dlfile" | awk '{print $1}')
-    rm $dlfile
-    echo $md5
+    local md5; md5=$(md5sum "$dlfile" | awk '{print $1}')
+    rm "$dlfile"
+    echo "$md5"
 }
 
 # Create new hint file
 create_new_hint_file() {
-    cd $HINT_DIR
+    cd "$HINT_DIR"
     local file="$1"
     local normalized_file="${file}"
 
@@ -306,14 +306,14 @@ create_new_hint_file() {
     fi
 
     # search repository for .info file
-    info=$(find $REPO_DIR -mindepth 2 -name ${normalized_file%.hint}.info)
+    info=$(find "$REPO_DIR" -mindepth 2 -name "${normalized_file%.hint}.info")
 
     # Check if file exists
     if [[ ! -f "$normalized_file" ]]; then
         # the hint file we want to create doesn't exists, so we can check
         # the sbo repository for a .info file and use that as hint
         if [[ -n $info ]]; then
-            cp $info $normalized_file
+            cp "$info" "$normalized_file"
             # remove unwanted lines from hint file
             sed -i -e "/^PRGNAM=/d" \
             -e "/^HOMEPAGE=/d" \
