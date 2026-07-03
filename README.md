@@ -166,6 +166,8 @@ When exactly one package is given, mkhint runs `nvchecker -e <package>` so only 
 
 If any scanned hint file has no nvchecker source configured, `--check` lists those packages and offers to populate `nvchecker.toml` for them in one prompt — auto-detecting github/pypi from the SBo `.info`, otherwise writing a commented stub to fill in. After populating, it asks you to review the file (fill any stubs) and re-run `mkhint -C`. Packages with no matching `.info` in the repository are skipped.
 
+Because a SlackBuild version string cannot contain `-` (it would break `PRGNAM` parsing), an upstream version such as `2026-06-02` is packaged as `2026_06_02`. mkhint normalizes upstream versions (`-` becomes `_`) before comparing them, so these are treated as the same version and no spurious upgrade or downgrade is offered. When you accept an update, the version is written to the hint file in the underscore form. The same normalization applies to `--hintfile` without `-v`. `nvtake` still records nvchecker's own raw upstream value.
+
 ### Help
 
 ```bash
