@@ -18,6 +18,9 @@ setup() {
              "$MOCK_REPO/development/ghpkg" \
              "$MOCK_REPO/python/pypkg" \
              "$MOCK_REPO/multimedia/yt-dlp" \
+             "$MOCK_REPO/development/gopkg" \
+             "$MOCK_REPO/development/rustpkg" \
+             "$MOCK_REPO/development/mixedpkg" \
              "$MOCK_HINT" \
              "$MOCK_TMP"
 
@@ -105,6 +108,54 @@ MAINTAINER="Test"
 EMAIL="test@test.com"
 EOF
 
+    # phantom-dep fixtures: packages requiring -current phantom deps
+    cat > "$MOCK_REPO/development/gopkg/gopkg.info" << 'EOF'
+PRGNAM="gopkg"
+VERSION="1.0.0"
+HOMEPAGE="https://example.com/gopkg"
+DOWNLOAD="https://example.com/gopkg-1.0.0.tar.gz"
+MD5SUM="33333333333333333333333333333333"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES="google-go-lang"
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    cat > "$MOCK_REPO/development/rustpkg/rustpkg.info" << 'EOF'
+PRGNAM="rustpkg"
+VERSION="1.0.0"
+HOMEPAGE="https://example.com/rustpkg"
+DOWNLOAD="https://example.com/rustpkg-1.0.0.tar.gz"
+MD5SUM="44444444444444444444444444444444"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES="rust-opt other-dep"
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    # mixedpkg: real deps + a phantom dep, gets a manual hint in some tests
+    cat > "$MOCK_REPO/development/mixedpkg/mixedpkg.info" << 'EOF'
+PRGNAM="mixedpkg"
+VERSION="3.2.1"
+HOMEPAGE="https://example.com/mixedpkg"
+DOWNLOAD="https://example.com/mixedpkg-3.2.1.tar.gz"
+MD5SUM="66666666666666666666666666666666"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES="libfoo google-go-lang libbar"
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    # phantom-dep list consumed by --fix-current and --new
+    cat > "$MOCK_BASE/phantom-deps" << 'EOF'
+# deps unneeded on -current
+rust-opt
+google-go-lang
+EOF
+
     # nvchecker config + keyfile for tests
     cat > "$MOCK_BASE/nvchecker.toml" << EOF
 [__config__]
@@ -130,6 +181,7 @@ run_mkhint() {
         -e "s|HINT_DIR=\".*\"|HINT_DIR=\"$MOCK_HINT\"|" \
         -e "s|TMP_DIR=\".*\"|TMP_DIR=\"$MOCK_TMP\"|" \
         -e "s|NVCHECKER_CONFIG=\".*\"|NVCHECKER_CONFIG=\"$MOCK_BASE/nvchecker.toml\"|" \
+        -e "s|PHANTOM_DEPS_FILE=\".*\"|PHANTOM_DEPS_FILE=\"$MOCK_BASE/phantom-deps\"|" \
         "$SCRIPT" > "$tmp_script"
     bash "$tmp_script" "$@"
     local rc=$?
@@ -974,6 +1026,77 @@ EOF
 # accept update (Y), decline slackrepo (n)
 run_mkhint -C curl < <(printf 'Y\nn\n')
 assert_contains "hint stores normalized version" "$MOCK_HINT/curl.hint" 'VERSION="2026_07_01"'
+
+# ── T50: --new on .info requiring a phantom dep → DELREQUIRES added ───────────
+echo ""
+echo "T50: --new phantom dep → DELREQUIRES added"
+rm -f "$MOCK_HINT/gopkg.hint"
+run_mkhint -n gopkg
+assert_contains     "DELREQUIRES added"      "$MOCK_HINT/gopkg.hint" 'DELREQUIRES="google-go-lang"'
+assert_contains     "REQUIRES still commented" "$MOCK_HINT/gopkg.hint" '#REQUIRES='
+
+# ── T51: --new on .info with no phantom dep → no DELREQUIRES ──────────────────
+echo ""
+echo "T51: --new no phantom dep → no DELREQUIRES"
+rm -f "$MOCK_HINT/curl.hint" "$MOCK_HINT/curl.hint.bak"
+run_mkhint -n curl
+assert_not_contains "no DELREQUIRES"         "$MOCK_HINT/curl.hint" 'DELREQUIRES'
+
+# ── T52: -F, dependent with no hint → minimal hint created ────────────────────
+echo ""
+echo "T52: --fix-current, no existing hint → minimal hint created"
+rm -f "$MOCK_HINT/rustpkg.hint" "$MOCK_HINT/rustpkg.hint.bak"
+run_mkhint -F
+assert_file_exists  "rustpkg hint created"   "$MOCK_HINT/rustpkg.hint"
+assert_contains     "rustpkg DELREQUIRES"    "$MOCK_HINT/rustpkg.hint" 'DELREQUIRES="rust-opt"'
+assert_not_contains "only rust-opt stripped" "$MOCK_HINT/rustpkg.hint" 'other-dep'
+
+# ── T53: -F, existing manual hint → .bak made, DELREQUIRES merged, rest intact ─
+echo ""
+echo "T53: --fix-current merges into existing hint, preserves content"
+cat > "$MOCK_HINT/mixedpkg.hint" << 'EOF'
+VERSION="3.2.1"
+ARCH="x86_64"
+DOWNLOAD="https://example.com/mixedpkg-3.2.1.tar.gz"
+MD5SUM="66666666666666666666666666666666"
+EOF
+rm -f "$MOCK_HINT/mixedpkg.hint.bak"
+run_mkhint -F
+assert_file_exists  "backup made"            "$MOCK_HINT/mixedpkg.hint.bak"
+assert_contains     "DELREQUIRES merged"     "$MOCK_HINT/mixedpkg.hint" 'DELREQUIRES="google-go-lang"'
+assert_contains     "VERSION preserved"      "$MOCK_HINT/mixedpkg.hint" 'VERSION="3.2.1"'
+assert_contains     "DOWNLOAD preserved"     "$MOCK_HINT/mixedpkg.hint" 'mixedpkg-3.2.1.tar.gz'
+
+# ── T54: -F re-run → idempotent, no duplicate deps, no new .bak churn ─────────
+echo ""
+echo "T54: --fix-current idempotent on second run"
+rm -f "$MOCK_HINT/mixedpkg.hint.bak"
+run_mkhint -F
+assert_not_contains "no duplicate dep"       "$MOCK_HINT/mixedpkg.hint" 'google-go-lang google-go-lang'
+assert_file_not_exists "no churn .bak"       "$MOCK_HINT/mixedpkg.hint.bak"
+
+# ── T55: empty/missing phantom-deps file → -F and --new are no-ops ────────────
+echo ""
+echo "T55: no phantom-deps file → --fix-current no-op"
+mv "$MOCK_BASE/phantom-deps" "$MOCK_BASE/phantom-deps.off"
+rm -f "$MOCK_HINT/gopkg.hint"
+out=$(run_mkhint -F)
+echo "$out" | grep -q "Nothing to do" \
+    && { echo "  PASS: reports nothing to do"; (( PASS++ )); } \
+    || { echo "  FAIL: reports nothing to do"; (( FAIL++ )); ERRORS+=("T55 message"); }
+assert_file_not_exists "no hint created"     "$MOCK_HINT/gopkg.hint"
+run_mkhint -n gopkg
+assert_not_contains "new: no DELREQUIRES"    "$MOCK_HINT/gopkg.hint" 'DELREQUIRES'
+mv "$MOCK_BASE/phantom-deps.off" "$MOCK_BASE/phantom-deps"
+
+# ── T56: -F combined with -v → exit 1 ─────────────────────────────────────────
+echo ""
+echo "T56: --fix-current with -v → exit 1"
+set +e
+run_mkhint -F -v 1.0.0 2>/dev/null
+code=$?
+set -e
+assert_exit_code    "mutually exclusive"     1 "$code"
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown

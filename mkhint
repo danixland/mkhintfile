@@ -21,6 +21,10 @@ REPO_DIR="/var/lib/sbopkg/SBo-danix/"
 HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"
 TMP_DIR="/tmp/mkhint"
 NVCHECKER_CONFIG="$HOME/.config/nvchecker/nvchecker.toml"
+# Deps that exist on Slackware stable but are unneeded on -current (system
+# package or newer already present). Listed one per line, '#' comments allowed.
+# Missing file = empty list = phantom-dep handling is a no-op.
+PHANTOM_DEPS_FILE="$HOME/.config/mkhint/phantom-deps"
 
 # create the temp dir if not existing
 if [[ ! -d $TMP_DIR ]]; then
@@ -50,6 +54,7 @@ Usage:
   ./mkhint --new FILE                           Create new hint file (no version)
   ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
   ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
+  ./mkhint --fix-current                        Sweep repo, add DELREQUIRES for -current phantom deps
   ./mkhint --list                               List hint files
   ./mkhint --review                             Review hints matching SBo version, keep/delete each
   ./mkhint --review FILE...                      Review named hints (any version), keep/delete each
@@ -66,12 +71,14 @@ Options:
   --review, -R [FILE...]   Review hints; no args = matched only, FILE... = named hints (any version)
   --clean, -c              Remove all .bak files from HINT_DIR
   --check, -C [FILE...]    Check hints for upstream updates via nvchecker, update interactively
+  --fix-current, -F        Add/merge DELREQUIRES for -current phantom deps across the whole repo
   --delete, -d FILE        Delete a hint file (and .bak if present)
   --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
   --help, -h               Show this help message
 
 Hint files are stored in: $HINT_DIR
 Temporary files are stored in: $TMP_DIR
+Phantom-dep list (for --fix-current / --new): $PHANTOM_DEPS_FILE
 
 Variables order in hint files:
   VERSION, ARCH, DOWNLOAD, MD5SUM, DOWNLOAD_x86_64, MD5SUM_x86_64
@@ -302,6 +309,90 @@ download_file() {
     echo "$md5"
 }
 
+# ── phantom-dep handling (deps unneeded on -current) ──────────────────────────
+
+# Load PHANTOM_DEPS_FILE into the PHANTOM_DEPS array (one dep per line, '#'
+# comments and blank lines ignored). Missing file => empty array.
+PHANTOM_DEPS=()
+load_phantom_deps() {
+    PHANTOM_DEPS=()
+    [[ -f "$PHANTOM_DEPS_FILE" ]] || return 0
+    local line
+    while IFS= read -r line; do
+        line="${line%%#*}"                 # strip comment
+        line="${line//[[:space:]]/}"       # strip whitespace
+        [[ -n "$line" ]] && PHANTOM_DEPS+=("$line")
+    done < "$PHANTOM_DEPS_FILE"
+}
+
+# Read REQUIRES="..." from an .info file and echo the phantom deps it contains,
+# space-separated. Empty output if none.
+phantom_deps_in_info() {
+    local info="$1" requires dep
+    [[ -f "$info" ]] || return 0
+    requires=$(. "$info" >/dev/null 2>&1; echo "${REQUIRES:-}")
+    local hits=()
+    for dep in "${PHANTOM_DEPS[@]}"; do
+        [[ " $requires " == *" $dep "* ]] && hits+=("$dep")
+    done
+    echo "${hits[*]}"
+}
+
+# Merge a set of deps into a hint file's DELREQUIRES (union, dedup), preserving
+# all other content. Creates a minimal hint if the file is absent. Backs up an
+# existing file to .bak first (mkhint convention). Args: hintpath dep...
+merge_delrequires() {
+    local hint="$1"; shift
+    local new_deps=("$@")
+    [[ ${#new_deps[@]} -eq 0 ]] && return 0
+
+    local existing="" combined
+    if [[ -f "$hint" ]]; then
+        existing=$(. "$hint" >/dev/null 2>&1; echo "${DELREQUIRES:-}")
+    fi
+    # union existing + new, dedup, first-seen order
+    combined=$(printf '%s\n' $existing "${new_deps[@]}" | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+    combined="${combined% }"
+
+    if [[ -f "$hint" ]]; then
+        # no change needed? (all new deps already present) → skip, don't churn .bak
+        local cur_norm new_norm
+        cur_norm=$(printf '%s\n' $existing | awk 'NF && !seen[$0]++' | sort | tr '\n' ' ')
+        new_norm=$(printf '%s\n' $existing "${new_deps[@]}" | awk 'NF && !seen[$0]++' | sort | tr '\n' ' ')
+        [[ "$cur_norm" == "$new_norm" ]] && return 0
+
+        cp "$hint" "${hint}.bak"
+        if grep -q '^DELREQUIRES=' "$hint"; then
+            sed -i "s#^DELREQUIRES=.*#DELREQUIRES=\"$combined\"#" "$hint"
+        else
+            printf 'DELREQUIRES="%s"\n' "$combined" >> "$hint"
+        fi
+    else
+        printf 'DELREQUIRES="%s"\n' "$combined" > "$hint"
+    fi
+}
+
+# Bulk sweep: for every package in REPO_DIR whose REQUIRES contains a phantom
+# dep, ensure its hint carries the matching DELREQUIRES. Idempotent.
+fix_current() {
+    load_phantom_deps
+    if [[ ${#PHANTOM_DEPS[@]} -eq 0 ]]; then
+        echo "No phantom deps configured ($PHANTOM_DEPS_FILE). Nothing to do."
+        return 0
+    fi
+    echo "Sweeping for phantom deps: ${PHANTOM_DEPS[*]}"
+    local info prgnam deps count=0
+    while IFS= read -r info; do
+        prgnam=$(basename "$info" .info)
+        deps=$(phantom_deps_in_info "$info")
+        [[ -z "$deps" ]] && continue
+        merge_delrequires "$HINT_DIR/$prgnam.hint" $deps
+        echo "  $prgnam <- DELREQUIRES: $deps"
+        (( count++ )) || true
+    done < <(find "$REPO_DIR" -mindepth 2 -maxdepth 3 -name '*.info' | sort)
+    echo "Done. $count package(s) with phantom deps."
+}
+
 # Create new hint file
 create_new_hint_file() {
     cd "$HINT_DIR"
@@ -333,6 +424,14 @@ create_new_hint_file() {
                 sed -i 's/^ARCH=.*/ARCH="x86_64"/' $normalized_file
             else
                 echo 'ARCH="x86_64"' >> $normalized_file
+            fi
+
+            # auto-strip -current phantom deps present in the .info REQUIRES
+            load_phantom_deps
+            local phantom; phantom=$(phantom_deps_in_info "$info")
+            if [[ -n "$phantom" ]]; then
+                printf 'DELREQUIRES="%s"\n' "$phantom" >> "$normalized_file"
+                echo "added DELREQUIRES=\"$phantom\" (unneeded on -current)."
             fi
 
             if [[ -n "$VERSION" ]]; then
@@ -872,8 +971,8 @@ check_updates() {
 # Main function
 main() {
     local parsed
-    parsed=$(getopt -o v:f:n:lcCdNhR \
-        --long version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review \
+    parsed=$(getopt -o v:f:n:lcCdNhRF \
+        --long version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review,fix-current \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
@@ -905,6 +1004,10 @@ main() {
                 ;;
             --check|-C)
                 COMMAND="check"
+                shift
+                ;;
+            --fix-current|-F)
+                COMMAND="fix-current"
                 shift
                 ;;
             --delete|-d)
@@ -964,6 +1067,11 @@ main() {
         exit 1
     fi
 
+    if [[ "$COMMAND" == "fix-current" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
+        echo "Error: --fix-current cannot be combined with --version/--hintfile/--new" >&2
+        exit 1
+    fi
+
     if [[ -n "$SHOW_LIST" || -n "$RUN_REVIEW" ]]; then
         [[ -n "$SHOW_LIST" ]] && list_hint_files
         if [[ -n "$RUN_REVIEW" ]]; then
@@ -987,6 +1095,9 @@ main() {
             ;;
         check)
             check_updates "${DELETE_HINT_FILES[@]}"
+            ;;
+        fix-current)
+            fix_current
             ;;
         update)
             check_wget

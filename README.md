@@ -43,6 +43,8 @@ newver = "/var/lib/nvchecker/newver"
 
 mkhint only appends package-specific `[section]` entries to this file; the `[__config__]` section must be created manually once.
 
+The `--fix-current` / `--new` phantom-dependency list is read from `~/.config/mkhint/phantom-deps` (one dep per line, `#` comments allowed). See "Strip -current phantom dependencies" below. A missing file makes those features no-ops.
+
 ## Usage
 
 ### Update an existing hint file
@@ -168,6 +170,44 @@ If any scanned hint file has no nvchecker source configured, `--check` lists tho
 
 Because a SlackBuild version string cannot contain `-` (it would break `PRGNAM` parsing), an upstream version such as `2026-06-02` is packaged as `2026_06_02`. mkhint normalizes upstream versions (`-` becomes `_`) before comparing them, so these are treated as the same version and no spurious upgrade or downgrade is offered. When you accept an update, the version is written to the hint file in the underscore form. The same normalization applies to `--hintfile` without `-v`. `nvtake` still records nvchecker's own raw upstream value.
 
+### Strip -current phantom dependencies
+
+SBo SlackBuilds target Slackware stable. Some of their build dependencies are unneeded on
+slackware-current because it already ships them as system packages or newer versions, for example
+`google-go-lang` (a system package on -current) and `rust-opt` (only needed on stable, where the
+system rust is old). slackrepo strips such a dep from a package by putting `DELREQUIRES="dep"` in
+that package's hint file.
+
+List these "phantom" deps once, one per line (`#` comments allowed), in:
+
+```
+~/.config/mkhint/phantom-deps
+```
+
+Example:
+
+```
+# deps needed on stable but not on -current
+rust-opt
+google-go-lang
+```
+
+`--fix-current` (`-F`) then sweeps the whole repository: for every package whose `REQUIRES` contains
+a listed dep, it ensures the hint carries the matching `DELREQUIRES`. Packages with no hint get a
+minimal one; packages with an existing hint are backed up to `.bak` and have the dep merged into
+their `DELREQUIRES` line, leaving everything else untouched. It is idempotent, so run it after each
+weekly repository regeneration:
+
+```bash
+mkhint --fix-current
+mkhint -F
+```
+
+`--new` also applies the list automatically: when it creates a hint from an `.info` whose `REQUIRES`
+contains a phantom dep, it adds the matching `DELREQUIRES` for you.
+
+If the list file is missing or empty, both features are no-ops.
+
 ### Help
 
 ```bash
@@ -196,6 +236,7 @@ mkhint -h
 | DOWNLOAD_x86_64 | Download URL for x86_64-specific build |
 | MD5SUM_x86_64 | MD5 checksum of the x86_64 archive |
 | NODOWNLOAD | Set to `yes` to skip download/checksum verification in slackrepo |
+| DELREQUIRES | Space-separated deps to strip from REQUIRES (e.g. -current phantom deps) |
 
 ## Notes
 
