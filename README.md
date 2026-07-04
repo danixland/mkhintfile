@@ -103,7 +103,7 @@ When updating a hint with multiline DOWNLOAD, mkhint:
 
 ### List hint files
 
-Lists each hint file with its `HintVer` (version in the hint) and `SBOVer` (version in the repository `.info`). Rows where the two are byte-equal are highlighted, so you can see at a glance which hints are now redundant with the upstream SBo version. Color is used only on a TTY; piped output is plain. A legend is printed when any row matched.
+Lists each hint file with its `HintVer` (version in the hint) and `SBOVer` (version in the repository `.info`). Hints with no `VERSION` set (e.g. pure `DELREQUIRES` hints) are skipped. Version columns are wide enough for long version strings. Rows where the two are byte-equal are highlighted, so you can see at a glance which hints are now redundant with the upstream SBo version. Color is used only on a TTY; piped output is plain. A legend is printed when any row matched.
 
 ```bash
 mkhint --list

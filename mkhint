@@ -111,7 +111,7 @@ list_hint_files() {
 
     echo "Hint files in: $HINT_DIR"
     echo "======================================================="
-    printf "%-40s  %10s  %10s  %-20s  %s\n" "File" "HintVer" "SBOVer" "Category" "Created"
+    printf "%-40s  %22s  %22s  %-20s  %s\n" "File" "HintVer" "SBOVer" "Category" "Created"
     echo "-------------------------------------------------------"
 
     MATCHED_PKGS=()
@@ -119,6 +119,8 @@ list_hint_files() {
     for file in "$HINT_DIR"/*.hint; do
         if [[ -f "$file" ]]; then
             local VER; VER=$(grep "^VERSION" "$file" |cut -d '"' -f2)
+            # Skip hints with no VERSION set.
+            [[ -z "$VER" ]] && continue
             local name; name=$(basename "$file")
             local pkg="${name%.hint}"
             local info_file
@@ -131,7 +133,7 @@ list_hint_files() {
             fi
             local date; date=$(stat -c "%y" "$file" | cut -d'.' -f1)
             local row
-            row=$(printf "%-40s  %10s  %10s  %-20s  %s" "$name" "$VER" "$SBO_VER" "$category" "$date")
+            row=$(printf "%-40s  %22s  %22s  %-20s  %s" "$name" "$VER" "$SBO_VER" "$category" "$date")
             if [[ -n "$VER" && "$VER" == "$SBO_VER" ]]; then
                 printf "%s%s%s\n" "$c_on" "$row" "$c_off"
                 MATCHED_PKGS+=("$pkg")

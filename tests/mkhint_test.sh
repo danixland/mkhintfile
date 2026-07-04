@@ -1098,6 +1098,30 @@ code=$?
 set -e
 assert_exit_code    "mutually exclusive"     1 "$code"
 
+# ── T57: -l skips hints with no VERSION ──────────────────────────────────────
+echo ""
+echo "T57: -l lists only hints that have a VERSION"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+EOF
+# no VERSION line at all
+cat > "$MOCK_HINT/novers.hint" << 'EOF'
+ARCH="x86_64"
+DELREQUIRES="rust-opt"
+EOF
+out=$(run_mkhint -l 2>&1)
+echo "$out" | grep -q "curl.hint" \
+    && { echo "  PASS: versioned hint shown"; (( PASS++ )); } \
+    || { echo "  FAIL: versioned hint missing"; (( FAIL++ )); ERRORS+=("T57 shown"); }
+echo "$out" | grep -q "novers.hint" \
+    && { echo "  FAIL: versionless hint shown"; (( FAIL++ )); ERRORS+=("T57 skip"); } \
+    || { echo "  PASS: versionless hint skipped"; (( PASS++ )); }
+echo "$out" | grep -q "Total: 1 file" \
+    && { echo "  PASS: count excludes versionless"; (( PASS++ )); } \
+    || { echo "  FAIL: count wrong"; (( FAIL++ )); ERRORS+=("T57 count"); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
