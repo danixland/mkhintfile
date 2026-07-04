@@ -3,8 +3,8 @@
 # mkhint - Manage hint files for slackrepo scripts
 #
 # Usage:
-#   ./mkhint --version VERSION --hintfile FILE    Update existing hint file
-#   ./mkhint --version VERSION --new FILE         Create new hint file
+#   ./mkhint --set-version VERSION --hintfile FILE    Update existing hint file
+#   ./mkhint --set-version VERSION --new FILE         Create new hint file
 #   ./mkhint --new FILE                           Create new hint file (no version)
 #   ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
 #   ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
@@ -49,11 +49,11 @@ NO_DL=0
 # Show help message
 show_help() {
     cat <<EOF
-mkhint - Manage hint files for slackrepo scripts
+mkhint $MKHINT_VERSION - Manage hint files for slackrepo scripts
 
 Usage:
-  ./mkhint --version VERSION --hintfile FILE    Update existing hint file
-  ./mkhint --version VERSION --new FILE         Create new hint file
+  ./mkhint --set-version VERSION --hintfile FILE    Update existing hint file
+  ./mkhint --set-version VERSION --new FILE         Create new hint file
   ./mkhint --new FILE                           Create new hint file (no version)
   ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
   ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
@@ -67,9 +67,10 @@ Usage:
   ./mkhint --help                               Show this help
 
 Options:
-  --version, -v VERSION    New version string (required for --hintfile)
-  --hintfile, -f FILE      Path to existing hint file (required with --version)
-  --new, -n FILE           Create new hint file (required with --version or standalone)
+  --version, -v            Print version and exit
+  --set-version, -V VER    New version string (required for --hintfile)
+  --hintfile, -f FILE      Path to existing hint file (required with --set-version)
+  --new, -n FILE           Create new hint file (required with --set-version or standalone)
   --list, -l [FILE...]     List all hint files; FILE... = side-by-side hint vs .info
   --review, -R [FILE...]   Review hints; no args = matched only, FILE... = named hints (any version)
   --clean, -c              Remove all .bak files from HINT_DIR
