@@ -31,6 +31,8 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
+readonly MKHINT_VERSION="1.0.0"
+
 # Variables
 VERSION=""
 HINT_FILE=""
@@ -1006,14 +1008,18 @@ check_updates() {
 # Main function
 main() {
     local parsed
-    parsed=$(getopt -o v:f:n:lcCdNhRF \
-        --long version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review,fix-current \
+    parsed=$(getopt -o vV:f:n:lcCdNhRF \
+        --long version,set-version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review,fix-current \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
     while true; do
         case "$1" in
             --version|-v)
+                echo "mkhint $MKHINT_VERSION"
+                exit 0
+                ;;
+            --set-version|-V)
                 VERSION="$2"
                 shift 2
                 ;;
@@ -1100,12 +1106,12 @@ main() {
     fi
 
     if [[ "$COMMAND" == "check" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
-        echo "Error: --check cannot be combined with --version/--hintfile/--new" >&2
+        echo "Error: --check cannot be combined with --set-version/--hintfile/--new" >&2
         exit 1
     fi
 
     if [[ "$COMMAND" == "fix-current" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
-        echo "Error: --fix-current cannot be combined with --version/--hintfile/--new" >&2
+        echo "Error: --fix-current cannot be combined with --set-version/--hintfile/--new" >&2
         exit 1
     fi
 

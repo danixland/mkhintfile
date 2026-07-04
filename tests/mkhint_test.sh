@@ -327,7 +327,7 @@ assert_not_contains   "no NODOWNLOAD"            "$MOCK_HINT/curl.hint" 'NODOWNL
 echo ""
 echo "T2: --new from .info with -v → version set, md5 recalculated"
 rm "$MOCK_HINT/curl.hint"
-run_mkhint -n curl -v 8.6.0
+run_mkhint -n curl -V 8.6.0
 assert_contains       "VERSION updated"          "$MOCK_HINT/curl.hint" 'VERSION="8.6.0"'
 assert_contains       "URL has new version"      "$MOCK_HINT/curl.hint" 'curl-8.6.0'
 # md5 should not be the original (was recalculated via mock wget)
@@ -344,7 +344,7 @@ assert_contains       "NODOWNLOAD present"       "$MOCK_HINT/curl.hint" 'NODOWNL
 echo ""
 echo "T4: --new -v -N → version + md5 updated + NODOWNLOAD=yes"
 rm "$MOCK_HINT/curl.hint"
-run_mkhint -n curl -v 8.7.0 -N
+run_mkhint -n curl -V 8.7.0 -N
 assert_contains       "VERSION updated"          "$MOCK_HINT/curl.hint" 'VERSION="8.7.0"'
 assert_not_contains   "MD5SUM not original"      "$MOCK_HINT/curl.hint" 'MD5SUM="abc123def456'
 assert_contains       "NODOWNLOAD present"       "$MOCK_HINT/curl.hint" 'NODOWNLOAD=yes'
@@ -369,7 +369,7 @@ MD5SUM="abc123def456abc123def456abc123de"
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 EOF
-run_mkhint -f curl -v 8.9.0
+run_mkhint -f curl -V 8.9.0
 assert_contains       "VERSION updated"          "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
 assert_contains       "URL updated"              "$MOCK_HINT/curl.hint" 'curl-8.9.0'
 assert_not_contains   "MD5SUM updated"           "$MOCK_HINT/curl.hint" 'abc123def456'
@@ -386,7 +386,7 @@ MD5SUM="abc123def456abc123def456abc123de"
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 EOF
-run_mkhint -f curl -v 9.0.0 -N
+run_mkhint -f curl -V 9.0.0 -N
 assert_contains       "VERSION updated"          "$MOCK_HINT/curl.hint" 'VERSION="9.0.0"'
 assert_not_contains   "MD5SUM recalculated"      "$MOCK_HINT/curl.hint" 'abc123def456'
 assert_contains       "NODOWNLOAD present"       "$MOCK_HINT/curl.hint" 'NODOWNLOAD=yes'
@@ -398,7 +398,7 @@ run_mkhint -n clion
 assert_contains       "DOWNLOAD UNSUPPORTED kept" "$MOCK_HINT/clion.hint" 'DOWNLOAD="UNSUPPORTED"'
 
 # Update it
-run_mkhint -f clion -v 2025.4
+run_mkhint -f clion -V 2025.4
 assert_contains       "VERSION updated"           "$MOCK_HINT/clion.hint" 'VERSION="2025.4"'
 assert_contains       "DOWNLOAD still UNSUPPORTED" "$MOCK_HINT/clion.hint" 'DOWNLOAD="UNSUPPORTED"'
 assert_not_contains   "x86_64 md5 updated"        "$MOCK_HINT/clion.hint" 'dff91fe793b8d3ee2446dd340288eef5'
@@ -416,7 +416,7 @@ assert_exit_code      "-N alone exits 1"         1 "$code"
 echo ""
 echo "T10: --hintfile on nonexistent file → exit 2"
 set +e
-run_mkhint -f nonexistent -v 1.0 2>/dev/null
+run_mkhint -f nonexistent -V 1.0 2>/dev/null
 code=$?
 set -e
 assert_exit_code      "missing hintfile exits 2" 2 "$code"
@@ -453,7 +453,7 @@ echo ""
 echo "T14: --new multiline .info -v → first URL+md5 updated, second md5 kept (no prompt in test)"
 rm "$MOCK_HINT/protoc-gen-go-grpc.hint"
 # Pipe empty input so read -r gets blank (keep continuation URL)
-echo "" | run_mkhint -n protoc-gen-go-grpc -v 1.4.0
+echo "" | run_mkhint -n protoc-gen-go-grpc -V 1.4.0
 assert_contains       "VERSION updated"          "$MOCK_HINT/protoc-gen-go-grpc.hint" 'VERSION="1.4.0"'
 assert_contains       "first URL has new ver"    "$MOCK_HINT/protoc-gen-go-grpc.hint" 'v1.4.0'
 assert_not_contains   "first md5 recalculated"   "$MOCK_HINT/protoc-gen-go-grpc.hint" '9d3abc100f411a59907528e55e772a10'
@@ -607,7 +607,7 @@ assert_contains     "clion accepted (updated)"   "$MOCK_HINT/clion.hint" 'VERSIO
 echo ""
 echo "T26: --check combined with -v → exit 1"
 set +e
-run_mkhint -C -v 1.0 2>/dev/null
+run_mkhint -C -V 1.0 2>/dev/null
 code=$?
 set -e
 assert_exit_code "check + -v exits 1" 1 "$code"
@@ -1093,7 +1093,7 @@ mv "$MOCK_BASE/phantom-deps.off" "$MOCK_BASE/phantom-deps"
 echo ""
 echo "T56: --fix-current with -v → exit 1"
 set +e
-run_mkhint -F -v 1.0.0 2>/dev/null
+run_mkhint -F -V 1.0.0 2>/dev/null
 code=$?
 set -e
 assert_exit_code    "mutually exclusive"     1 "$code"
@@ -1236,6 +1236,35 @@ out=$(run_mkhint -l 2>&1)
 echo "$out" | grep curl.hint | grep -q "✓" \
     && { echo "  FAIL: ✓ shown without DELREQUIRES"; (( FAIL++ )); ERRORS+=("T64 check"); } \
     || { echo "  PASS: no ✓ without DELREQUIRES"; (( PASS++ )); }
+
+# ── T65: mkhint -v prints tool version ───────────────────────────────────────
+echo ""
+echo "T65: -v prints 'mkhint <version>' and exits 0"
+set +e
+out=$(run_mkhint -v 2>&1); code=$?
+set -e
+assert_exit_code "-v exits 0" 0 "$code"
+echo "$out" | grep -Eq '^mkhint [0-9]+\.[0-9]+\.[0-9]+$' \
+    && { echo "  PASS: -v prints version"; (( PASS++ )); } \
+    || { echo "  FAIL: -v output wrong: $out"; (( FAIL++ )); ERRORS+=("T65 output"); }
+
+# ── T66: mkhint --version prints tool version ────────────────────────────────
+echo ""
+echo "T66: --version prints 'mkhint <version>' and exits 0"
+set +e
+out=$(run_mkhint --version 2>&1); code=$?
+set -e
+assert_exit_code "--version exits 0" 0 "$code"
+echo "$out" | grep -Eq '^mkhint [0-9]+\.[0-9]+\.[0-9]+$' \
+    && { echo "  PASS: --version prints version"; (( PASS++ )); } \
+    || { echo "  FAIL: --version output wrong: $out"; (( FAIL++ )); ERRORS+=("T66 output"); }
+
+# ── T67: -V still sets the hint version (rename works) ───────────────────────
+echo ""
+echo "T67: -V <ver> -n <pkg> sets hint VERSION"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+run_mkhint -n curl -V 8.6.0 >/dev/null 2>&1
+assert_contains "hint VERSION set via -V" "$MOCK_HINT/curl.hint" 'VERSION="8.6.0"'
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
