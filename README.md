@@ -52,8 +52,8 @@ The `--fix-current` / `--new` phantom-dependency list is read from `~/.config/mk
 Updates the package version, downloads the archive, and recalculates the MD5 checksums:
 
 ```bash
-mkhint --hintfile mypackage --version 2.0.1
-mkhint -f mypackage -v 2.0.1
+mkhint --hintfile mypackage --set-version 2.0.1
+mkhint -f mypackage -V 2.0.1
 ```
 
 Replaces the old version string with 2.0.1 everywhere in mypackage.hint, re-downloads the URLs from DOWNLOAD and DOWNLOAD_x86_64, and updates MD5SUM and MD5SUM_x86_64. Backs up the old file to mypackage.hint.bak first.
@@ -65,18 +65,18 @@ URLs set to `UNSUPPORTED` or `UNTESTED` are skipped.
 Downloads and recalculates checksums, then appends `NODOWNLOAD=yes` to tell slackrepo to skip checksum verification at build time:
 
 ```bash
-mkhint -f mypackage -v 2.0.1 -N
-mkhint --hintfile mypackage --version 2.0.1 --no-dl
+mkhint -f mypackage -V 2.0.1 -N
+mkhint --hintfile mypackage --set-version 2.0.1 --no-dl
 ```
 
 ### Create a new hint file from .info
 
-Copies the corresponding .info file as a template, removes PRGNAM, HOMEPAGE, MAINTAINER, EMAIL, comments out REQUIRES, and sets ARCH to x86_64. If `-v` is given, the version string is updated and checksums are recalculated:
+Copies the corresponding .info file as a template, removes PRGNAM, HOMEPAGE, MAINTAINER, EMAIL, comments out REQUIRES, and sets ARCH to x86_64. If `-V` is given, the version string is updated and checksums are recalculated:
 
 ```bash
 mkhint --new mypackage            # copy .info as-is, keep VERSION from .info
-mkhint -n mypackage -v 1.2.3     # copy .info, update version + recalculate md5
-mkhint -n mypackage -v 1.2.3 -N  # same, also add NODOWNLOAD=yes
+mkhint -n mypackage -V 1.2.3     # copy .info, update version + recalculate md5
+mkhint -n mypackage -V 1.2.3 -N  # same, also add NODOWNLOAD=yes
 mkhint -n mypackage -N           # copy .info, add NODOWNLOAD=yes, no downloads
 ```
 
@@ -155,7 +155,7 @@ mkhint --new mypackage            # adds [mypackage] section to nvchecker config
 When updating an existing hint file with `--hintfile` but without `-v`, mkhint queries nvchecker for the latest version, shows you the current and latest versions, and prompts to accept the latest, type a different version, or decline. After accepting an update, it runs `nvtake` to sync nvchecker's keyfile:
 
 ```bash
-mkhint --hintfile mypackage       # suggests latest version via nvchecker (no -v flag)
+mkhint --hintfile mypackage       # suggests latest version via nvchecker (no -V flag)
 ```
 
 Check one or more packages for upstream updates with `--check`. mkhint runs nvchecker for all (or named) hint files, reports outdated packages, prompts per-package to update, applies updates with `nvtake`, and finishes with a single `slackrepo update` prompt for all updated packages:
@@ -246,7 +246,11 @@ mkhint -h
 - If DOWNLOAD or DOWNLOAD_x86_64 is `UNSUPPORTED` or `UNTESTED`, that URL is skipped and its MD5SUM is left unchanged.
 - `--no-dl` / `-N` does **not** skip downloads — it downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` to the hint file.
 - After a successful `--hintfile` update, mkhint prompts `Run 'slackrepo update <package>'? [Y/n]`. Enter or `y` runs slackrepo immediately; `n` skips.
-- Bash completion for `-f`/`--hintfile`, `-n`/`--new`, `-d`/`--delete`, `-C`/`--check`, `-R`/`--review`, and `-l`/`--list` autocompletes package names from their respective directories (`-l` and `-R` complete hint names repeatedly, for any number of packages). When `-f <package>` is already on the command line, `-v [TAB]` suggests the current `VERSION` from that package's hint file. If the hint file is absent, no version is suggested. Short flags (`-v`, `-f`, `-n`, `-l`, `-R`, `-c`, `-d`, `-C`, `-N`, `-h`) and their long forms (including `--review`) are also completed.
+- Bash completion for `-f`/`--hintfile`, `-n`/`--new`, `-d`/`--delete`, `-C`/`--check`, `-R`/`--review`, and `-l`/`--list` autocompletes package names from their respective directories (`-l` and `-R` complete hint names repeatedly, for any number of packages). When `-f <package>` is already on the command line, `-V [TAB]` suggests the current `VERSION` from that package's hint file. If the hint file is absent, no version is suggested. Short flags (`-v`, `-V`, `-f`, `-n`, `-l`, `-R`, `-c`, `-d`, `-C`, `-N`, `-h`) and their long forms (including `--review`) are also completed.
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). Commits use [Conventional Commits](https://www.conventionalcommits.org/): `feat:` bumps the minor version, `fix:` the patch version, and a `!` / `BREAKING CHANGE` the major version. Releases are tagged `vX.Y.Z`; the version is stored in `MKHINT_VERSION` in the `mkhint` script. `mkhint -v` (or `--version`) prints it. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Development Approach
 
