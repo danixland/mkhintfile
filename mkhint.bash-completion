@@ -8,7 +8,7 @@ _mkhintfile_completions() {
     repo_dir="/var/lib/sbopkg/SBo-danix"
     hint_dir="/etc/slackrepo/SBo-danix/hintfiles"
 
-    local all_flags="--version -v --hintfile -f --new -n --list -l --review -R --clean -c --check -C --fix-current -F --delete -d --no-dl -N --help -h"
+    local all_flags="--version -v --set-version -V --hintfile -f --new -n --list -l --review -R --clean -c --check -C --fix-current -F --delete -d --no-dl -N --help -h"
 
     # -R/--review and -l/--list take any number of hint names; complete them repeatedly.
     local w in_review=""
@@ -39,7 +39,7 @@ _mkhintfile_completions() {
             done
             COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
             ;;
-        --version|-v)
+        --set-version|-V)
             local pkg="" i
             for (( i=1; i<${#COMP_WORDS[@]}-1; i++ )); do
                 if [[ "${COMP_WORDS[i]}" == "--hintfile" || "${COMP_WORDS[i]}" == "-f" ]]; then
