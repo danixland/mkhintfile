@@ -93,6 +93,12 @@ Exit codes:
 EOF
 }
 
+# Pad a possibly-multibyte glyph (0 or 1 display column) to a fixed width.
+_pad_glyph() {
+    local g="$1" w="$2"
+    if [[ -n "$g" ]]; then printf "%s%*s" "$g" $((w - 1)) ""; else printf "%*s" "$w" ""; fi
+}
+
 # List hint files
 list_hint_files() {
     if [[ ! -d "$HINT_DIR" ]]; then
@@ -101,18 +107,18 @@ list_hint_files() {
     fi
 
     # Color only on a TTY, or when forced for tests. tput optional.
-    local c_on="" c_off=""
+    local c_on="" c_off="" g_on=""
     if [[ -n "$MKHINT_FORCE_COLOR" || -t 1 ]]; then
         if command -v tput &>/dev/null && tput setaf 3 &>/dev/null; then
-            c_on=$(tput setaf 3); c_off=$(tput sgr0)
+            c_on=$(tput setaf 3); g_on=$(tput setaf 2); c_off=$(tput sgr0)
         else
-            c_on=$'\033[33m'; c_off=$'\033[0m'
+            c_on=$'\033[33m'; g_on=$'\033[32m'; c_off=$'\033[0m'
         fi
     fi
 
     echo "Hint files in: $HINT_DIR"
     echo "======================================================="
-    printf "%-40s  %22s  %22s  %-20s  %s\n" "File" "HintVer" "SBOVer" "Category" "Created"
+    printf "%-40s  %22s  %22s  %-20s  %-6s  %s\n" "File" "HintVer" "SBOVer" "Category" "DelReq" "Created"
     echo "-------------------------------------------------------"
 
     MATCHED_PKGS=()
@@ -122,6 +128,8 @@ list_hint_files() {
             local VER; VER=$(grep "^VERSION" "$file" |cut -d '"' -f2)
             # Skip hints with no VERSION set.
             [[ -z "$VER" ]] && continue
+            local delreq=""
+            grep -q '^DELREQUIRES="..*"' "$file" && delreq="✓"
             local name; name=$(basename "$file")
             local pkg="${name%.hint}"
             local info_file
@@ -133,14 +141,29 @@ list_hint_files() {
                 category=$(basename "$(dirname "$(dirname "$info_file")")")
             fi
             local date; date=$(stat -c "%y" "$file" | cut -d'.' -f1)
-            local row
-            row=$(printf "%-40s  %22s  %22s  %-20s  %s" "$name" "$VER" "$SBO_VER" "$category" "$date")
-            if [[ -n "$VER" && "$VER" == "$SBO_VER" ]]; then
+            local dr; dr=$(_pad_glyph "$delreq" 6)
+            local hv sv
+            hv=$(printf "%22s" "$VER")
+            sv=$(printf "%22s" "$SBO_VER")
+            if [[ -n "$SBO_VER" && "$VER" == "$SBO_VER" ]]; then
+                # equal → whole row yellow
+                local row
+                row=$(printf "%-40s  %s  %s  %-20s  %s  %s" "$name" "$hv" "$sv" "$category" "$dr" "$date")
                 printf "%s%s%s\n" "$c_on" "$row" "$c_off"
                 MATCHED_PKGS+=("$pkg")
                 matched=$((matched + 1))
             else
-                printf "%s\n" "$row"
+                # differ (or no SBO_VER) → green the newer cell, row plain
+                if [[ -n "$SBO_VER" ]]; then
+                    local newer
+                    newer=$(printf '%s\n%s\n' "$VER" "$SBO_VER" | sort -V | tail -1)
+                    if [[ "$newer" == "$VER" ]]; then
+                        hv="${g_on}${hv}${c_off}"
+                    else
+                        sv="${g_on}${sv}${c_off}"
+                    fi
+                fi
+                printf "%-40s  %s  %s  %-20s  %s  %s\n" "$name" "$hv" "$sv" "$category" "$dr" "$date"
             fi
             count=$((count + 1))
         fi
@@ -153,7 +176,7 @@ list_hint_files() {
     echo "======================================================="
     echo "Total: $count file(s)"
     if [[ $matched -gt 0 && -n "$c_on" ]]; then
-        echo "(highlighted = hint version matches SBo .info)"
+        echo "(yellow row = versions match; green = newer side)"
     fi
 }
 

@@ -820,7 +820,7 @@ out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
 echo "$out" | grep -q $'\033\[33m.*curl.hint' \
     && { echo "  PASS: curl row highlighted"; (( PASS++ )); } \
     || { echo "  FAIL: curl row not highlighted"; echo "$out" | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T36 highlight"); }
-echo "$out" | grep -q "highlighted = hint version matches" \
+echo "$out" | grep -q "yellow row = versions match" \
     && { echo "  PASS: legend shown"; (( PASS++ )); } \
     || { echo "  FAIL: legend missing"; (( FAIL++ )); ERRORS+=("T36 legend"); }
 # clion row must NOT carry the color start code
@@ -1146,6 +1146,96 @@ run_mkhint -l nope 2>/dev/null
 code=$?
 set -e
 assert_exit_code    "missing hint"     2 "$code"
+
+# ── T60: -l hint newer than SBo → HintVer cell green ─────────────────────────
+echo ""
+echo "T60: -l hint version newer than .info → HintVer green"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# curl .info is 8.5.0; hint 8.6.0 is newer
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.6.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.6.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
+# green start code (ESC[32m) appears before the hint version 8.6.0 on the curl row
+echo "$out" | grep curl.hint | grep -q $'\033\[32m.*8\.6\.0' \
+    && { echo "  PASS: HintVer green when hint newer"; (( PASS++ )); } \
+    || { echo "  FAIL: HintVer not green"; echo "$out" | grep curl.hint | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T60 green"); }
+# whole row must NOT be yellow (differing versions)
+echo "$out" | grep curl.hint | grep -q $'\033\[33m' \
+    && { echo "  FAIL: differing row wrongly yellow"; (( FAIL++ )); ERRORS+=("T60 yellow"); } \
+    || { echo "  PASS: differing row not yellow"; (( PASS++ )); }
+
+# ── T61: -l SBo newer than hint → SBOVer cell green ──────────────────────────
+echo ""
+echo "T61: -l .info version newer than hint → SBOVer green"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# curl .info is 8.5.0; hint 8.4.0 is older
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.4.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.4.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
+# green start code appears before the SBo version 8.5.0 on the curl row
+echo "$out" | grep curl.hint | grep -q $'\033\[32m.*8\.5\.0' \
+    && { echo "  PASS: SBOVer green when .info newer"; (( PASS++ )); } \
+    || { echo "  FAIL: SBOVer not green"; echo "$out" | grep curl.hint | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T61 green"); }
+
+# ── T62: -l equal versions → whole row yellow, no green ──────────────────────
+echo ""
+echo "T62: -l equal versions → yellow row, no green cell"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
+echo "$out" | grep curl.hint | grep -q $'\033\[33m' \
+    && { echo "  PASS: equal row yellow"; (( PASS++ )); } \
+    || { echo "  FAIL: equal row not yellow"; echo "$out" | grep curl.hint | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T62 yellow"); }
+echo "$out" | grep curl.hint | grep -q $'\033\[32m' \
+    && { echo "  FAIL: equal row wrongly green"; (( FAIL++ )); ERRORS+=("T62 green"); } \
+    || { echo "  PASS: equal row has no green"; (( PASS++ )); }
+
+# ── T63: -l shows ✓ in DelReq for hint with DELREQUIRES ──────────────────────
+echo ""
+echo "T63: -l DelReq column shows ✓ when DELREQUIRES populated"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DELREQUIRES="rust-opt"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+out=$(run_mkhint -l 2>&1)
+echo "$out" | grep -q "DelReq" \
+    && { echo "  PASS: DelReq header present"; (( PASS++ )); } \
+    || { echo "  FAIL: DelReq header missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T63 header"); }
+echo "$out" | grep curl.hint | grep -q "✓" \
+    && { echo "  PASS: ✓ shown for DELREQUIRES hint"; (( PASS++ )); } \
+    || { echo "  FAIL: ✓ missing"; echo "$out" | grep curl.hint | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T63 check"); }
+
+# ── T64: -l DelReq blank when no DELREQUIRES ─────────────────────────────────
+echo ""
+echo "T64: -l DelReq column blank when no DELREQUIRES"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+out=$(run_mkhint -l 2>&1)
+echo "$out" | grep curl.hint | grep -q "✓" \
+    && { echo "  FAIL: ✓ shown without DELREQUIRES"; (( FAIL++ )); ERRORS+=("T64 check"); } \
+    || { echo "  PASS: no ✓ without DELREQUIRES"; (( PASS++ )); }
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
