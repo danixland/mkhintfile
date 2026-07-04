@@ -246,4 +246,12 @@ mkhint -h
 - If DOWNLOAD or DOWNLOAD_x86_64 is `UNSUPPORTED` or `UNTESTED`, that URL is skipped and its MD5SUM is left unchanged.
 - `--no-dl` / `-N` does **not** skip downloads — it downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` to the hint file.
 - After a successful `--hintfile` update, mkhint prompts `Run 'slackrepo update <package>'? [Y/n]`. Enter or `y` runs slackrepo immediately; `n` skips.
-- Bash completion for `-f`/`--hintfile`, `-n`/`--new`, `-d`/`--delete`, and `-C`/`--check` autocompletes package names from their respective directories. When `-f <package>` is already on the command line, `-v [TAB]` suggests the current `VERSION` from that package's hint file. If the hint file is absent, no version is suggested. Short flags (`-v`, `-f`, `-n`, `-l`, `-R`, `-c`, `-d`, `-C`, `-N`, `-h`) and their long forms (including `--review`) are also completed.
+- Bash completion for `-f`/`--hintfile`, `-n`/`--new`, `-d`/`--delete`, `-C`/`--check`, `-R`/`--review`, and `-l`/`--list` autocompletes package names from their respective directories (`-l` and `-R` complete hint names repeatedly, for any number of packages). When `-f <package>` is already on the command line, `-v [TAB]` suggests the current `VERSION` from that package's hint file. If the hint file is absent, no version is suggested. Short flags (`-v`, `-f`, `-n`, `-l`, `-R`, `-c`, `-d`, `-C`, `-N`, `-h`) and their long forms (including `--review`) are also completed.
+
+## Development Approach
+
+This project is developed using AI-assisted tools. Code is generated with the help of AI based on human-provided specifications, design decisions, and iterative feedback.
+
+All contributions are reviewed, tested, and curated by the maintainer before being included in the codebase. AI is used as a productivity and exploration tool, while human oversight remains central to all decisions.
+
+The goal is to combine the flexibility of AI-assisted development with standard open-source practices such as transparency, review, and accountability.
