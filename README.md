@@ -105,6 +105,8 @@ When updating a hint with multiline DOWNLOAD, mkhint:
 
 Lists each hint file with its `HintVer` (version in the hint) and `SBOVer` (version in the repository `.info`). Hints with no `VERSION` set (e.g. pure `DELREQUIRES` hints) are skipped. Version columns are wide enough for long version strings. Rows where the two are byte-equal are highlighted, so you can see at a glance which hints are now redundant with the upstream SBo version. Color is used only on a TTY; piped output is plain. A legend is printed when any row matched.
 
+With one or more package names (`-l foo bar`), the table is skipped; instead each named hint is shown side by side with its `.info` (`git diff --no-index` if git is available, otherwise `diff -y`). A missing hint exits 2.
+
 ```bash
 mkhint --list
 mkhint -l

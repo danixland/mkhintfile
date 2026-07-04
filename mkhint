@@ -38,6 +38,7 @@ NEW_HINT_FILE=""
 DELETE_HINT_FILES=()
 MATCHED_PKGS=()
 REVIEW_PKGS=()
+LIST_PKGS=()
 SHOW_LIST=""
 RUN_REVIEW=""
 COMMAND=""
@@ -67,7 +68,7 @@ Options:
   --version, -v VERSION    New version string (required for --hintfile)
   --hintfile, -f FILE      Path to existing hint file (required with --version)
   --new, -n FILE           Create new hint file (required with --version or standalone)
-  --list, -l               List all hint files in the default directory
+  --list, -l [FILE...]     List all hint files; FILE... = side-by-side hint vs .info
   --review, -R [FILE...]   Review hints; no args = matched only, FILE... = named hints (any version)
   --clean, -c              Remove all .bak files from HINT_DIR
   --check, -C [FILE...]    Check hints for upstream updates via nvchecker, update interactively
@@ -156,22 +157,31 @@ list_hint_files() {
     fi
 }
 
+# Show hint side-by-side with its .info. Output to the given fd (default 1).
+_show_hint_diff() {
+    local pkg="$1"
+    local fd="${2:-1}"
+    local hint="${HINT_DIR%/}/${pkg}.hint"
+    local info
+    info=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
+
+    echo "" >&"$fd"
+    echo "=== $pkg ===" >&"$fd"
+    if command -v git &>/dev/null; then
+        git diff --no-index --color=auto "$hint" "$info" >&"$fd" || true
+    else
+        diff -y --width="${COLUMNS:-160}" "$hint" "$info" >&"$fd" || true
+    fi
+}
+
 # Diff one hint against its .info and prompt Keep/Delete/Skip.
 # Human-facing output goes to stderr; echoes only "deleted" or "kept" on stdout
 # so the caller can capture the result.
 _review_one_hint() {
     local pkg="$1"
     local hint="${HINT_DIR%/}/${pkg}.hint"
-    local info
-    info=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
 
-    echo "" >&2
-    echo "=== $pkg ===" >&2
-    if command -v git &>/dev/null; then
-        git diff --no-index --color=auto "$hint" "$info" >&2 || true
-    else
-        diff -y --width="${COLUMNS:-160}" "$hint" "$info" >&2 || true
-    fi
+    _show_hint_diff "$pkg" 2
 
     local ans
     read -r -p "Review $pkg: [K]eep / [D]elete / [S]kip (default Keep): " ans
@@ -1042,6 +1052,8 @@ main() {
     while [[ $# -gt 0 ]]; do
         if [[ -n "$RUN_REVIEW" && -z "$COMMAND" ]]; then
             REVIEW_PKGS+=("$1")
+        elif [[ -n "$SHOW_LIST" && -z "$COMMAND" ]]; then
+            LIST_PKGS+=("$1")
         else
             DELETE_HINT_FILES+=("$1")
         fi
@@ -1072,6 +1084,20 @@ main() {
     if [[ "$COMMAND" == "fix-current" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
         echo "Error: --fix-current cannot be combined with --version/--hintfile/--new" >&2
         exit 1
+    fi
+
+    if [[ -n "$SHOW_LIST" && ${#LIST_PKGS[@]} -gt 0 ]]; then
+        local p
+        for p in "${LIST_PKGS[@]}"; do
+            if [[ ! -f "${HINT_DIR%/}/${p}.hint" ]]; then
+                echo "Error: hint file not found: ${HINT_DIR%/}/${p}.hint" >&2
+                exit 2
+            fi
+        done
+        for p in "${LIST_PKGS[@]}"; do
+            _show_hint_diff "$p"
+        done
+        exit 0
     fi
 
     if [[ -n "$SHOW_LIST" || -n "$RUN_REVIEW" ]]; then

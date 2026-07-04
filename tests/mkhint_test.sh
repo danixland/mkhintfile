@@ -1122,6 +1122,31 @@ echo "$out" | grep -q "Total: 1 file" \
     && { echo "  PASS: count excludes versionless"; (( PASS++ )); } \
     || { echo "  FAIL: count wrong"; (( FAIL++ )); ERRORS+=("T57 count"); }
 
+# ── T58: -l <pkg> shows side-by-side diff, not the table ─────────────────────
+echo ""
+echo "T58: -l <pkg> shows hint vs .info diff"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+EOF
+out=$(run_mkhint -l curl 2>&1)
+echo "$out" | grep -q "=== curl ===" \
+    && { echo "  PASS: diff header shown"; (( PASS++ )); } \
+    || { echo "  FAIL: diff header missing"; (( FAIL++ )); ERRORS+=("T58 header"); }
+echo "$out" | grep -q "HintVer" \
+    && { echo "  FAIL: table printed"; (( FAIL++ )); ERRORS+=("T58 table"); } \
+    || { echo "  PASS: no table"; (( PASS++ )); }
+
+# ── T59: -l <missing> → exit 2 ───────────────────────────────────────────────
+echo ""
+echo "T59: -l on nonexistent hint → exit 2"
+set +e
+run_mkhint -l nope 2>/dev/null
+code=$?
+set -e
+assert_exit_code    "missing hint"     2 "$code"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
