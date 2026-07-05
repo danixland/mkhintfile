@@ -8,27 +8,27 @@ mkhint - manage hint files for slackrepo scripts
 
 # SYNOPSIS
 
-**mkhint** \[**--set-version** *VERSION*] **--hintfile** *FILE*
+**mkhint** \[**\--set-version** *VERSION*] **\--hintfile** *FILE*
 
-**mkhint** \[**--set-version** *VERSION*] **--new** *FILE* \[**--no-dl**]
+**mkhint** \[**\--set-version** *VERSION*] **\--new** *FILE* \[**\--no-dl**]
 
-**mkhint** **--check** \[*FILE*...]
+**mkhint** **\--check** \[*FILE*...]
 
-**mkhint** **--fix-current**
+**mkhint** **\--fix-current**
 
-**mkhint** **--list** \[*FILE*...]
+**mkhint** **\--list** \[*FILE*...]
 
-**mkhint** **--review** \[*FILE*...]
+**mkhint** **\--review** \[*FILE*...]
 
-**mkhint** **--delete** *FILE*...
+**mkhint** **\--delete** *FILE*...
 
-**mkhint** **--clean**
+**mkhint** **\--clean**
 
-**mkhint** {**--version** | **--help**}
+**mkhint** {**\--version** | **\--help**}
 
 # DESCRIPTION
 
-**mkhint** manages [slackrepo](https://idlemoor.github.io/slackrepo/) hint
+**mkhint** manages slackrepo hint
 files. A hint file overrides build variables (version, download URL, checksum,
 dependencies) for a SlackBuild. **mkhint** updates the version string and
 download checksums of an existing hint, creates a new hint from a repository
@@ -41,54 +41,54 @@ package repository, `slackrepo build` if it is not.
 
 # OPTIONS
 
-**--set-version**, **-V** *VERSION*
-: New version string. Required with **--hintfile**; optional with **--new**.
+**\--set-version**, **-V** *VERSION*
+: New version string. Required with **\--hintfile**; optional with **\--new**.
 Replaces the old version everywhere in the hint and recalculates MD5 checksums.
 
-**--hintfile**, **-f** *FILE*
+**\--hintfile**, **-f** *FILE*
 : Update an existing hint file. Without **-V**, queries **nvchecker** for the
 latest version and prompts to accept, override, or decline. Backs the hint up
 to *FILE*.bak first.
 
-**--new**, **-n** *FILE*
+**\--new**, **-n** *FILE*
 : Create a new hint file from the package's `.info` template. Keeps `VERSION`
 from the `.info` unless **-V** is given. Appends an **nvchecker** section to the
 config, autodetecting a github or pypi source or leaving a commented stub.
 
-**--check**, **-C** \[*FILE*...]
+**\--check**, **-C** \[*FILE*...]
 : Check all (or the named) hints for upstream updates via **nvchecker** and
 apply them interactively. With one package, uses `nvchecker -e`; with two or
 more, one full scan. Mutually exclusive with **-V**.
 
-**--fix-current**, **-F**
+**\--fix-current**, **-F**
 : Sweep the whole repository. For every package whose `REQUIRES` contains a
 phantom dependency, ensure its hint carries the matching `DELREQUIRES`.
 Idempotent. Mutually exclusive with **-V**, **-f**, **-n**.
 
-**--list**, **-l** \[*FILE*...]
+**\--list**, **-l** \[*FILE*...]
 : List all hint files with their hint version, `.info` version, and a
 `DelReq` marker. With package names, show each hint side by side with its
 `.info` instead of the table.
 
-**--review**, **-R** \[*FILE*...]
+**\--review**, **-R** \[*FILE*...]
 : Review hints. With no arguments, iterate the hints whose version matches the
 `.info`. With names, review each named hint regardless of match. For each,
 show a diff and prompt **[K]eep / [D]elete / [S]kip**.
 
-**--delete**, **-d** *FILE*...
+**\--delete**, **-d** *FILE*...
 : Delete a hint file and its `.bak`. Accepts multiple names.
 
-**--clean**, **-c**
+**\--clean**, **-c**
 : Remove all `.bak` files from the hint directory.
 
-**--no-dl**, **-N**
+**\--no-dl**, **-N**
 : Download and recalculate checksums, then append `NODOWNLOAD=yes`. Use with
-**--hintfile** or **--new**; an error on its own.
+**\--hintfile** or **\--new**; an error on its own.
 
-**--version**, **-v**
+**\--version**, **-v**
 : Print `mkhint <version>` and exit.
 
-**--help**, **-h**
+**\--help**, **-h**
 : Print a short usage summary and exit.
 
 # USAGE EXAMPLES
@@ -155,8 +155,8 @@ before version-checking works. **mkhint** only appends per-package sections.
 
 `PHANTOM_DEPS_FILE` (`$HOME/.config/mkhint/phantom-deps`)
 : One phantom dependency per line, `#` comments allowed. Deps needed on
-Slackware stable but not on -current. A missing file makes **--fix-current**
-and the **--new** phantom-dep hook no-ops.
+Slackware stable but not on -current. A missing file makes **\--fix-current**
+and the **\--new** phantom-dep hook no-ops.
 
 `TMP_DIR` (`/tmp/mkhint`)
 : Scratch directory for downloads.
