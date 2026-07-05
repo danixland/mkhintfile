@@ -2,6 +2,8 @@
 
 Manage hint files for slackrepo scripts. Updates version strings and download checksums, or creates new hint files from repository .info files.
 
+[slackrepo](https://github.com/aclemons/slackrepo) was originally created by David Spencer (idlemoor) and is now maintained by Andrew Clemons at <https://github.com/aclemons/slackrepo>.
+
 ## Installation
 
 ### Script

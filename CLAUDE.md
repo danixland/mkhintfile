@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-`mkhint` — bash utility for managing [slackrepo](https://idlemoor.github.io/slackrepo/) hint files. Hint files override build variables (version, download URL, checksum) for SlackBuilds.
+`mkhint` — bash utility for managing [slackrepo](https://github.com/aclemons/slackrepo) hint files. Hint files override build variables (version, download URL, checksum) for SlackBuilds.
 
 ## Configuration
 
