@@ -1289,6 +1289,94 @@ rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
 run_mkhint -n curl -V 8.6.0 >/dev/null 2>&1
 assert_contains "hint VERSION set via -V" "$MOCK_HINT/curl.hint" 'VERSION="8.6.0"'
 
+# ── T68: --check updated pkg already built → slackrepo UPDATE ─────────────────
+echo ""
+echo "T68: --check, package present in repo, offered 'update'"
+rm -f "$SLACKREPO_LOG" "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+seed_pkg network curl 8.5.0
+run_mkhint -C curl < <(printf 'Y\nY\n')
+assert_contains "slackrepo update called" "$SLACKREPO_LOG" '^update curl$'
+assert_not_contains "no build called"     "$SLACKREPO_LOG" 'build'
+
+# ── T69: --check updated pkg NOT built → slackrepo BUILD ──────────────────────
+echo ""
+echo "T69: --check, package absent from repo, offered 'build'"
+rm -f "$SLACKREPO_LOG" "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -C curl < <(printf 'Y\nY\n')
+assert_contains "slackrepo build called" "$SLACKREPO_LOG" '^build curl$'
+assert_not_contains "no update called"   "$SLACKREPO_LOG" 'update'
+
+# ── T70: --check mixed → update for built, build for new ──────────────────────
+echo ""
+echo "T70: --check, one built + one new, both offered"
+rm -f "$SLACKREPO_LOG" "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" }, "wget": { "version": "1.25.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+cat > "$MOCK_HINT/wget.hint" << 'EOF'
+VERSION="1.21.0"
+ARCH="x86_64"
+DOWNLOAD="https://ftp.gnu.org/gnu/wget/wget-1.21.0.tar.gz"
+MD5SUM="beefbeefbeefbeefbeefbeefbeefbeef"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+seed_pkg network curl 8.5.0
+run_mkhint -C curl wget < <(printf 'Y\nY\nY\nY\n')
+assert_contains "update for built curl" "$SLACKREPO_LOG" '^update curl$'
+assert_contains "build for new wget"    "$SLACKREPO_LOG" '^build wget$'
+
+# ── T71: --hintfile no -V, pkg not built → build ──────────────────────────────
+echo ""
+echo "T71: --hintfile single, build-vs-update by presence"
+rm -f "$SLACKREPO_LOG" "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -f curl < <(printf '\nY\n')
+assert_contains "hintfile new pkg → build" "$SLACKREPO_LOG" '^build curl$'
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
