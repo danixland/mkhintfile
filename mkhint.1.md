@@ -1,4 +1,4 @@
-% MKHINT(1) mkhint 1.1.1 | User Commands
+% MKHINT(1) mkhint 1.1.2 | User Commands
 % Danilo M.
 % July 2026
 
@@ -51,7 +51,9 @@ latest version and prompts to accept, override, or decline. Backs the hint up
 to *FILE*.bak first.
 
 **\--new**, **-n** *FILE*
-: Create a new hint file from the package's `.info` template. Keeps `VERSION`
+: Create a new hint file from the package's `.info`. Strips `PRGNAM`,
+`HOMEPAGE`, `MAINTAINER`, and `EMAIL`, comments out `REQUIRES`, and sets
+`ARCH="x86_64"`, keeping only the variables a hint needs. `VERSION` is kept
 from the `.info` unless **-V** is given. Appends an **nvchecker** section to the
 config, autodetecting a github or pypi source or leaving a commented stub.
 
@@ -105,7 +107,7 @@ Same, then append `NODOWNLOAD=yes`:
 
 Create a new hint from `.info`:
 
-    mkhint --new mypackage            # copy .info as-is, keep its VERSION
+    mkhint --new mypackage            # from .info, keep its VERSION
     mkhint -n mypackage -V 1.2.3      # update version + recalculate md5
     mkhint -n mypackage -V 1.2.3 -N   # same, add NODOWNLOAD=yes
 
@@ -188,6 +190,16 @@ and the **\--new** phantom-dep hook no-ops.
 
 4
 : Required tool not available (wget / nvchecker / nvtake / jq).
+
+# BASH COMPLETION
+
+A bash completion script ships with **mkhint** (install to
+*/etc/bash-completion.d/mkhint*). It completes long and short options and, for
+**-f**, **-n**, **-d**, **-C**, **-R**, and **-l**, the package names from their
+respective directories. With **-f** *package* already on the command line,
+**-V** *TAB* suggests the current `VERSION` from that package's hint. The
+completion script sources the same *~/.config/mkhint/config*, so its paths stay
+in sync with **mkhint**.
 
 # SEE ALSO
 
