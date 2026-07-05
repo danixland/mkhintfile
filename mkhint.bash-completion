@@ -2,11 +2,17 @@
 # Install: sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
 
 _mkhintfile_completions() {
-    local cur prev repo_dir hint_dir
+    local cur prev repo_dir hint_dir mkhint_config
     _init_completion || return
 
     repo_dir="/var/lib/sbopkg/SBo-danix"
     hint_dir="/etc/slackrepo/SBo-danix/hintfiles"
+    mkhint_config="$HOME/.config/mkhint/config"
+    # shellcheck disable=SC1090
+    [[ -f "$mkhint_config" ]] && source "$mkhint_config"
+    repo_dir="${REPO_DIR:-$repo_dir}"
+    hint_dir="${HINT_DIR:-$hint_dir}"
+    repo_dir="${repo_dir%/}"; hint_dir="${hint_dir%/}"
 
     local all_flags="--version -v --set-version -V --hintfile -f --new -n --list -l --review -R --clean -c --check -C --fix-current -F --delete -d --no-dl -N --help -h"
 
