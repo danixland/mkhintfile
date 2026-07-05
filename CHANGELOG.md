@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.1.1] - 2026-07-05
 
 ### Added
 - `mkhint.1` man page (gzipped, built from `mkhint.1.md` with pandoc) as the
@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 - `--help` is now a compact summary; usage examples, the variable-order note,
   and the exit-code table moved to the man page.
+- Reference the current slackrepo home at github.com/aclemons/slackrepo (Andrew
+  Clemons), crediting David Spencer (idlemoor) as the original creator.
 
 ## [1.1.0] - 2026-07-05
 
