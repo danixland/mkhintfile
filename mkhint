@@ -88,6 +88,7 @@ Options:
   --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
   --help, -h               Show this help message
 
+Config file: ${MKHINT_CONFIG}$([[ -f "$MKHINT_CONFIG" ]] && echo " (present, sourced)" || echo " (not present, using defaults)")
 Hint files are stored in: $HINT_DIR
 Temporary files are stored in: $TMP_DIR
 Phantom-dep list (for --fix-current / --new): $PHANTOM_DEPS_FILE
