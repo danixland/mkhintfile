@@ -31,7 +31,18 @@ REPO_DIR="/var/lib/sbopkg/SBo-danix/"      # Repository containing .info files
 HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"  # Directory where .hint files are stored
 ```
 
-Keep the same paths in sync in `mkhint.bash-completion` (lines 8–9).
+Rather than editing the script, you can drop an optional config file at `~/.config/mkhint/config` (plain shell `KEY="value"` lines). It is sourced after the built-in defaults and can override any of these paths:
+
+```bash
+REPO_DIR="/var/lib/sbopkg/SBo-danix/"           # repository with .info files
+HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"  # where .hint files live
+PACKAGES_DIR="/repo/"                            # built packages (*.txz) repository
+NVCHECKER_CONFIG="$HOME/.config/nvchecker/nvchecker.toml"
+PHANTOM_DEPS_FILE="$HOME/.config/mkhint/phantom-deps"
+TMP_DIR="/tmp/mkhint"                            # download scratch directory
+```
+
+Set only the keys you want to change; a missing config file keeps the defaults. Both `mkhint` and `mkhint.bash-completion` read this file, so they stay in sync automatically.
 
 nvchecker reads its configuration from `~/.config/nvchecker/nvchecker.toml`. You must set up the `[__config__]` section with oldver and newver keyfile paths before using version-checking features:
 
@@ -158,7 +169,7 @@ When updating an existing hint file with `--hintfile` but without `-v`, mkhint q
 mkhint --hintfile mypackage       # suggests latest version via nvchecker (no -V flag)
 ```
 
-Check one or more packages for upstream updates with `--check`. mkhint runs nvchecker for all (or named) hint files, reports outdated packages, prompts per-package to update, applies updates with `nvtake`, and finishes with a single `slackrepo update` prompt for all updated packages:
+Check one or more packages for upstream updates with `--check`. mkhint runs nvchecker for all (or named) hint files, reports outdated packages, prompts per-package to update, applies updates with `nvtake`, and finishes by prompting slackrepo for all updated packages:
 
 ```bash
 mkhint --check                    # check all hints for upstream updates
@@ -167,6 +178,8 @@ mkhint -C                         # short form
 ```
 
 When exactly one package is given, mkhint runs `nvchecker -e <package>` so only that entry is scanned instead of the whole `nvchecker.toml`. With two or more packages, or no arguments, it does a single full scan. (`--hintfile` without `-v` likewise queries just its one entry via `-e`.)
+
+The slackrepo action is chosen per package: if the package is already built in `PACKAGES_DIR` (a matching `*.txz` exists), mkhint prompts `slackrepo update`; if it has never been built there, it prompts `slackrepo build`. `--check` groups its updated packages into "already built" and "not yet built" and prompts for `update` then `build` separately, running each only when its group is non-empty. `--hintfile` makes the same choice for its single package.
 
 If any scanned hint file has no nvchecker source configured, `--check` lists those packages and offers to populate `nvchecker.toml` for them in one prompt — auto-detecting github/pypi from the SBo `.info`, otherwise writing a commented stub to fill in. After populating, it asks you to review the file (fill any stubs) and re-run `mkhint -C`. Packages with no matching `.info` in the repository are skipped.
 
@@ -245,7 +258,7 @@ mkhint -h
 - Hint files are backed up to `.bak` before any modification.
 - If DOWNLOAD or DOWNLOAD_x86_64 is `UNSUPPORTED` or `UNTESTED`, that URL is skipped and its MD5SUM is left unchanged.
 - `--no-dl` / `-N` does **not** skip downloads — it downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` to the hint file.
-- After a successful `--hintfile` update, mkhint prompts `Run 'slackrepo update <package>'? [Y/n]`. Enter or `y` runs slackrepo immediately; `n` skips.
+- After a successful `--hintfile` update, mkhint prompts to run slackrepo for the package, choosing `update` if it is already built in `PACKAGES_DIR` or `build` if it is not. Enter or `y` runs slackrepo immediately; `n` skips.
 - Bash completion for `-f`/`--hintfile`, `-n`/`--new`, `-d`/`--delete`, `-C`/`--check`, `-R`/`--review`, and `-l`/`--list` autocompletes package names from their respective directories (`-l` and `-R` complete hint names repeatedly, for any number of packages). When `-f <package>` is already on the command line, `-V [TAB]` suggests the current `VERSION` from that package's hint file. If the hint file is absent, no version is suggested. Short flags (`-v`, `-V`, `-f`, `-n`, `-l`, `-R`, `-c`, `-d`, `-C`, `-N`, `-h`) and their long forms (including `--review`) are also completed.
 
 ## Versioning
