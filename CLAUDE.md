@@ -169,4 +169,12 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 ```bash
 sudo cp mkhint /usr/local/bin/mkhint
 sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
+sudo cp mkhint.1.gz /usr/local/man/man1/mkhint.1.gz
 ```
+
+Man page source is `mkhint.1.md`; the committed `mkhint.1.gz` is rebuilt with
+`pandoc mkhint.1.md -s -t man -o mkhint.1 && gzip -9 -n -f mkhint.1`. Option
+names are `\--`-escaped in the source so pandoc's man output renders the
+double-dash flags. `--help` is a compact summary that points at `man mkhint`;
+the full reference (usage examples, configuration, exit codes) lives in the
+man page.

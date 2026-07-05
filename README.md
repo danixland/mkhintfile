@@ -16,6 +16,21 @@ sudo cp mkhint /usr/local/bin/mkhint
 sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
 ```
 
+### Man Page
+
+```bash
+sudo cp mkhint.1.gz /usr/local/man/man1/mkhint.1.gz
+```
+
+The man page is pre-built and committed. To regenerate it from source (requires
+pandoc):
+
+```bash
+pandoc mkhint.1.md -s -t man -o mkhint.1 && gzip -9 -n -f mkhint.1
+```
+
+`mkhint --help` is a compact summary; the man page holds the full reference.
+
 ### Dependencies
 
 - `wget` — for downloading archives and calculating checksums
