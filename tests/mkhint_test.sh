@@ -1402,6 +1402,17 @@ run_mkhint -C curl < <(printf 'Y\nY\n')
 assert_contains "override tree → update" "$SLACKREPO_LOG" '^update curl$'
 rm -f "$MOCK_BASE/config"
 
+# ── T73: --help compact, exits 0, points at man page ─────────────────────────
+echo ""
+echo "T73: --help exits 0 and points at 'man mkhint'"
+set +e
+out=$(run_mkhint --help 2>&1); code=$?
+set -e
+assert_exit_code "--help exits 0" 0 "$code"
+echo "$out" | grep -q 'man mkhint' \
+    && { echo "  PASS: --help points at man page"; (( PASS++ )); } \
+    || { echo "  FAIL: --help missing man pointer: $out"; (( FAIL++ )); ERRORS+=("T73 pointer"); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

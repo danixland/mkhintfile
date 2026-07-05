@@ -59,20 +59,7 @@ show_help() {
     cat <<EOF
 mkhint $MKHINT_VERSION - Manage hint files for slackrepo scripts
 
-Usage:
-  ./mkhint --set-version VERSION --hintfile FILE    Update existing hint file
-  ./mkhint --set-version VERSION --new FILE         Create new hint file
-  ./mkhint --new FILE                           Create new hint file (no version)
-  ./mkhint --hintfile FILE                      Update hint, suggest latest version via nvchecker
-  ./mkhint --check [FILE...]                     Check all (or named) hints for upstream updates
-  ./mkhint --fix-current                        Sweep repo, add DELREQUIRES for -current phantom deps
-  ./mkhint --list                               List hint files
-  ./mkhint --review                             Review hints matching SBo version, keep/delete each
-  ./mkhint --review FILE...                      Review named hints (any version), keep/delete each
-  ./mkhint --clean                              Remove .bak files from HINT_DIR
-  ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
-  ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
-  ./mkhint --help                               Show this help
+Usage: mkhint [OPTION] [FILE...]
 
 Options:
   --version, -v            Print version and exit
@@ -93,15 +80,7 @@ Hint files are stored in: $HINT_DIR
 Temporary files are stored in: $TMP_DIR
 Phantom-dep list (for --fix-current / --new): $PHANTOM_DEPS_FILE
 
-Variables order in hint files:
-  VERSION, ARCH, DOWNLOAD, MD5SUM, DOWNLOAD_x86_64, MD5SUM_x86_64
-
-Exit codes:
-  0 - Success
-  1 - Invalid arguments or missing required options
-  2 - File not found
-  3 - File already exists
-  4 - required tool not available (wget / nvchecker / nvtake / jq)
+See 'man mkhint' for usage examples, configuration, and exit codes.
 EOF
 }
 
