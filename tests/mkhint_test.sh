@@ -5,6 +5,7 @@ SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/mkhint"
 MOCK_BASE="/tmp/mkhint_test_$$"
 MOCK_REPO="$MOCK_BASE/repo"
 MOCK_HINT="$MOCK_BASE/hints"
+MOCK_PKGS="$MOCK_BASE/packages"
 MOCK_TMP="$MOCK_BASE/tmp"
 
 PASS=0
@@ -182,6 +183,8 @@ run_mkhint() {
         -e "s|TMP_DIR=\".*\"|TMP_DIR=\"$MOCK_TMP\"|" \
         -e "s|NVCHECKER_CONFIG=\".*\"|NVCHECKER_CONFIG=\"$MOCK_BASE/nvchecker.toml\"|" \
         -e "s|PHANTOM_DEPS_FILE=\".*\"|PHANTOM_DEPS_FILE=\"$MOCK_BASE/phantom-deps\"|" \
+        -e "s|PACKAGES_DIR=\".*\"|PACKAGES_DIR=\"$MOCK_PKGS\"|" \
+        -e "s|MKHINT_CONFIG=\".*\"|MKHINT_CONFIG=\"$MOCK_BASE/config\"|" \
         "$SCRIPT" > "$tmp_script"
     bash "$tmp_script" "$@"
     local rc=$?
@@ -234,6 +237,25 @@ EOF
     if ! command -v jq &> /dev/null; then
         echo "WARNING: real jq not found; install jq to run nvchecker tests" >&2
     fi
+}
+
+# Stub slackrepo: log "<action> <args...>" to $MOCK_BASE/slackrepo.log
+mock_slackrepo() {
+    mkdir -p "$MOCK_BASE/bin"
+    cat > "$MOCK_BASE/bin/slackrepo" << 'EOF'
+#!/bin/bash
+echo "$*" >> "$SLACKREPO_LOG"
+exit 0
+EOF
+    chmod +x "$MOCK_BASE/bin/slackrepo"
+    export SLACKREPO_LOG="$MOCK_BASE/slackrepo.log"
+}
+
+# Create a fake built package: $1=category $2=pkgname $3=version
+seed_pkg() {
+    local cat="$1" pkg="$2" ver="$3"
+    mkdir -p "$MOCK_PKGS/$cat/$pkg"
+    : > "$MOCK_PKGS/$cat/$pkg/${pkg}-${ver}-x86_64-1_danix.txz"
 }
 
 assert_contains() {
@@ -309,6 +331,7 @@ echo "========================================"
 setup
 mock_wget
 mock_nvchecker_tools
+mock_slackrepo
 
 # ── T1: --new from .info, no version ──────────────────────────────────────────
 echo ""
