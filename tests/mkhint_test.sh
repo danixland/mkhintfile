@@ -1377,6 +1377,31 @@ EOF
 run_mkhint -f curl < <(printf '\nY\n')
 assert_contains "hintfile new pkg → build" "$SLACKREPO_LOG" '^build curl$'
 
+# ── T72: config file overrides PACKAGES_DIR ──────────────────────────────────
+echo ""
+echo "T72: ~/.config/mkhint/config overrides PACKAGES_DIR"
+rm -f "$SLACKREPO_LOG" "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS" "$MOCK_BASE/altpkgs"
+mkdir -p "$MOCK_BASE/altpkgs/network/curl"
+: > "$MOCK_BASE/altpkgs/network/curl/curl-8.5.0-x86_64-1_danix.txz"
+cat > "$MOCK_BASE/config" << EOF
+PACKAGES_DIR="$MOCK_BASE/altpkgs"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -C curl < <(printf 'Y\nY\n')
+assert_contains "override tree → update" "$SLACKREPO_LOG" '^update curl$'
+rm -f "$MOCK_BASE/config"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
