@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format is based on
   reconcile without changing the hint.
 - `--force` flag (check-only): run the bundled-dep reconcile even when the
   primary version is unchanged (e.g. to retry after a failed manifest fetch).
+- The bundled-dep reconcile writes a `.bak` before mutating a hint (parity with
+  every other mutator, so a `--force` reconcile is recoverable), and its change
+  report shows old and new URL basenames so version bumps are visible before you
+  confirm.
 
 ## [1.1.3] - 2026-07-07
 

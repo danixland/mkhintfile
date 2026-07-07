@@ -598,25 +598,30 @@ reconcile_bundle_deps() {
     for m in "${manifest_urls[@]}"; do
         [[ -z "${matched_manifest[$m]:-}" ]] && extra+=("$(_dep_label "$m")")
     done
-    if [[ ${#extra[@]} -gt 0 ]]; then
+    if [[ ${#extra[@]} -gt 0 && "$mode" == report ]]; then
         echo "$pkg: manifest has ${#extra[@]} deps not in hint:"
         printf '%s\n' "${extra[@]}"
     fi
 
     if [[ ${#changed_idx[@]} -eq 0 ]]; then
-        echo "  $pkg: bundled deps all current"
+        [[ "$mode" == report ]] && echo "  $pkg: bundled deps all current"
         return 0
     fi
 
-    echo ""
-    echo "$pkg bundled deps changed upstream:"
-    for (( i=0; i<${#changed_idx[@]}; i++ )); do
-        printf '  %s  ->  %s\n' "$(_dep_label "${changed_from[$i]}")" "$(_dep_label "${changed_to[$i]}")"
-    done
-
-    [[ "$mode" == report ]] && return 0
+    if [[ "$mode" == report ]]; then
+        echo ""
+        echo "$pkg bundled deps changed upstream:"
+        for (( i=0; i<${#changed_idx[@]}; i++ )); do
+            printf '  %s  ->  %s\n' "${changed_from[$i]##*/}" "${changed_to[$i]##*/}"
+        done
+        return 0
+    fi
 
     # apply mode: recompute md5 only for changed lines, rewrite DOWNLOAD+MD5SUM.
+    # Back up first (mkhint convention) — only reached when there is something
+    # to write, since the no-change case already returned above.
+    cp "$hint" "${hint}.bak"
+
     local -a new_md5s=("${md5s[@]}")
     local idx md5
     for idx in "${changed_idx[@]}"; do

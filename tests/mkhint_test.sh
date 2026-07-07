@@ -1777,6 +1777,59 @@ grep -q 'VERSION="0.14.0"' "$MOCK_HINT/bmnvim.hint" \
     || { echo "  FAIL: -f -V parity:"; cat "$MOCK_HINT/bmnvim.hint"; (( FAIL++ )); ERRORS+=("T-BM18"); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
 
+# ── T-BM19: --check --force apply writes a .bak before rewriting the hint ────
+echo ""
+echo "T-BM19: --check --force reconcile apply creates a .bak with original content"
+setup_bmnvim_check
+rm -f "$MOCK_HINT/bmnvim.hint.bak"
+run_mkhint -C --force bmnvim < <(printf 'Y\n') >/dev/null 2>&1 || true
+[[ -f "$MOCK_HINT/bmnvim.hint.bak" ]] && grep -q 'v0.26.7' "$MOCK_HINT/bmnvim.hint.bak" \
+    && { echo "  PASS: .bak created with original (pre-bump) content"; (( PASS++ )); } \
+    || { echo "  FAIL: .bak missing or wrong content"; ls "$MOCK_HINT"; (( FAIL++ )); ERRORS+=("T-BM19"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint" "$MOCK_HINT/bmnvim.hint.bak"
+
+# ── T-BM20: --check --force with deps already current does NOT create a .bak ─
+echo ""
+echo "T-BM20: --check --force, bundled deps already current → no .bak churn"
+setup_bmnvim_check
+# Make the hint's tree-sitter dep URL byte-identical to the manifest's so
+# reconcile finds no change (match_dep_url compares full URL strings, not
+# just versions — the manifest fixture uses a bare archive/vX.Y.Z.tar.gz
+# shape, so the hint line must match that exact shape here).
+sed -i 's#tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz#tree-sitter/archive/v0.26.8.tar.gz#' "$MOCK_HINT/bmnvim.hint"
+rm -f "$MOCK_HINT/bmnvim.hint.bak"
+run_mkhint -C --force bmnvim < <(printf 'Y\n') >/dev/null 2>&1 || true
+[[ ! -f "$MOCK_HINT/bmnvim.hint.bak" ]] \
+    && { echo "  PASS: no .bak written on no-op reconcile"; (( PASS++ )); } \
+    || { echo "  FAIL: .bak written despite no changes"; (( FAIL++ )); ERRORS+=("T-BM20"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint" "$MOCK_HINT/bmnvim.hint.bak"
+
+# ── T-BM21: changed-deps report shows old and new versions, not bare names ───
+echo ""
+echo "T-BM21: reconcile changed-deps report shows versions on both sides"
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz
+TREESITTER_SHA256 b
+EOF
+cat > "$MOCK_HINT/nvim.hint" << 'EOF'
+VERSION="0.13.0"
+DOWNLOAD="https://github.com/neovim/neovim/archive/v0.13.0/neovim-0.13.0.tar.gz \
+    https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz"
+MD5SUM="aaa \
+    bbb"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+ARCH="x86_64"
+EOF
+rep=$(bash -c "TMP_DIR='$MOCK_TMP'; PATH=\"$MOCK_BASE/bin:\$PATH\"; source '$SCRIPT' 2>/dev/null; reconcile_bundle_deps nvim '$MOCK_HINT/nvim.hint' 'https://x/deps.txt' report" 2>&1) || true
+arrow_line=$(echo "$rep" | grep -- '->')
+echo "$arrow_line" | grep -q '0.26.7' && echo "$arrow_line" | grep -q '0.26.8' \
+    && { echo "  PASS: report shows old and new versions"; (( PASS++ )); } \
+    || { echo "  FAIL: report versions. out=$rep"; (( FAIL++ )); ERRORS+=("T-BM21"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_HINT/nvim.hint"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
