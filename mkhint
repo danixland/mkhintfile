@@ -525,6 +525,107 @@ fetch_manifest() {
     [[ -s "$out" ]] || return 1
     printf '%s\n' "$out"
 }
+
+# reconcile_bundle_deps <pkg> <hintfile> <manifest_url> <mode>
+# mode = report (print only) | apply (rewrite matched changed lines + md5).
+# Reconciles the DOWNLOAD line's extra URLs (index >= 1) against the manifest.
+# The primary URL (index 0) is never touched here. Guarded for set -e.
+reconcile_bundle_deps() {
+    local pkg="$1" hint="$2" murl="$3" mode="$4"
+
+    # Display label for a dep URL: _url_stem is basename-only, so for a github
+    # "archive/vX.Y.Z.tar.gz" tarball (no repo name in the filename) it just
+    # returns the bare version — fall back to the repo name in that case.
+    local _dep_label
+    _dep_label() {
+        local s; s=$(_url_stem "$1")
+        if [[ "$s" =~ ^[vV]?[0-9] ]]; then
+            local r; r=$(_url_repo "$1")
+            [[ -n "$r" ]] && { printf '%s\n' "${r#*/}"; return; }
+        fi
+        printf '%s\n' "$s"
+    }
+
+    local mfile
+    if ! mfile=$(fetch_manifest "$murl"); then
+        echo "  $pkg: manifest unavailable ($murl) — bundled deps left as-is (retry with --force)"
+        return 0
+    fi
+    local -a manifest_urls
+    mapfile -t manifest_urls < <(parse_manifest "$mfile")
+    rm -f "$mfile"
+    if [[ ${#manifest_urls[@]} -eq 0 ]]; then
+        echo "  $pkg: manifest empty/unrecognized — bundled deps left as-is"
+        return 0
+    fi
+    local mlist; printf -v mlist '%s\n' "${manifest_urls[@]}"
+
+    local -a urls
+    mapfile -t urls < <(parse_multiline_var "DOWNLOAD" "$hint")
+    (( ${#urls[@]} <= 1 )) && { echo "  $pkg: no bundled deps in DOWNLOAD"; return 0; }
+    local -a md5s
+    mapfile -t md5s < <(parse_multiline_var "MD5SUM" "$hint")
+
+    # Track which manifest URLs got matched (for the FYI of unmatched ones).
+    local -A matched_manifest=()
+    local -a new_urls=("${urls[@]}")
+    local -a changed_idx=() changed_from=() changed_to=()
+    local i m
+    for (( i=1; i<${#urls[@]}; i++ )); do
+        m=$(match_dep_url "${urls[$i]}" "$mlist") || m=""
+        if [[ -z "$m" ]]; then
+            echo "  $pkg: $(_dep_label "${urls[$i]}") — no manifest match (left as-is)"
+            continue
+        fi
+        matched_manifest["$m"]=1
+        if [[ "$m" != "${urls[$i]}" ]]; then
+            changed_idx+=("$i"); changed_from+=("${urls[$i]}"); changed_to+=("$m")
+            new_urls[$i]="$m"
+        fi
+    done
+
+    # Manifest-only deps FYI (manifest URLs never matched by any hint line).
+    local -a extra=()
+    for m in "${manifest_urls[@]}"; do
+        [[ -z "${matched_manifest[$m]:-}" ]] && extra+=("$(_dep_label "$m")")
+    done
+    if [[ ${#extra[@]} -gt 0 ]]; then
+        echo "$pkg: manifest has ${#extra[@]} deps not in hint:"
+        printf '%s\n' "${extra[@]}"
+    fi
+
+    if [[ ${#changed_idx[@]} -eq 0 ]]; then
+        echo "  $pkg: bundled deps all current"
+        return 0
+    fi
+
+    echo ""
+    echo "$pkg bundled deps changed upstream:"
+    for (( i=0; i<${#changed_idx[@]}; i++ )); do
+        printf '  %s  ->  %s\n' "$(_dep_label "${changed_from[$i]}")" "$(_dep_label "${changed_to[$i]}")"
+    done
+
+    [[ "$mode" == report ]] && return 0
+
+    # apply mode: recompute md5 only for changed lines, rewrite DOWNLOAD+MD5SUM.
+    local -a new_md5s=("${md5s[@]}")
+    local idx md5
+    for idx in "${changed_idx[@]}"; do
+        echo "Downloading (bundled): ${new_urls[$idx]}"
+        if md5=$(download_file "${new_urls[$idx]}"); then
+            new_md5s[$idx]="$md5"
+        else
+            echo "  download failed for ${new_urls[$idx]} — left as-is"
+            new_urls[$idx]="${urls[$idx]}"   # revert this line
+        fi
+    done
+
+    local new_dl new_md5v
+    new_dl=$(build_multiline_value new_urls);  new_dl="${new_dl#\"}";  new_dl="${new_dl%\"}"
+    new_md5v=$(build_multiline_value new_md5s); new_md5v="${new_md5v#\"}"; new_md5v="${new_md5v%\"}"
+    perl -i -0pe 'BEGIN{$v=shift} s|^DOWNLOAD="[^"]*(?:\\\n[^"]*)*"|DOWNLOAD="$v"|m' "$new_dl" "$hint"
+    perl -i -0pe 'BEGIN{$v=shift} s|^MD5SUM="[^"]*(?:\\\n[^"]*)*"|MD5SUM="$v"|m' "$new_md5v" "$hint"
+}
 # ── end bundled-dep manifest handling ─────────────────────────────────────────
 
 # Create new hint file
@@ -1313,4 +1414,9 @@ main() {
     esac
 }
 
-main "$@"
+# Only run main when executed directly; allow tests to source this file to
+# reach individual functions without triggering the CLI (and its `exit 1`
+# for a no-args invocation).
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

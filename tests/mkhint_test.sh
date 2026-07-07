@@ -1552,6 +1552,48 @@ mpath=$(bash -c "TMP_DIR='$MOCK_TMP'; PATH=\"$MOCK_BASE/bin:\$PATH\"; $BM_SRC; f
     || { echo "  FAIL: fetch_manifest path='$mpath'"; (( FAIL++ )); ERRORS+=("T-BM7"); }
 rm -f "$MOCK_BASE/manifest_fixture"
 
+# ── T-BM8: reconcile report mode leaves the hint unchanged ───────────────────
+echo ""
+echo "T-BM8: reconcile_bundle_deps report mode: prints, does not rewrite"
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz
+TREESITTER_SHA256 b
+WASMTIME_URL https://github.com/bytecodealliance/wasmtime/archive/v36.0.6.tar.gz
+WASMTIME_SHA256 c
+EOF
+cat > "$MOCK_HINT/nvim.hint" << 'EOF'
+VERSION="0.13.0"
+DOWNLOAD="https://github.com/neovim/neovim/archive/v0.13.0/neovim-0.13.0.tar.gz \
+    https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz"
+MD5SUM="aaa \
+    bbb"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+ARCH="x86_64"
+EOF
+cp "$MOCK_HINT/nvim.hint" "$MOCK_BASE/nvim.before"
+BM_SRC='source <(sed -n "/# ── bundled-dep manifest handling/,/# ── end bundled-dep/p" '"$SCRIPT"')'
+rep=$(bash -c "TMP_DIR='$MOCK_TMP'; PATH=\"$MOCK_BASE/bin:\$PATH\"; source '$SCRIPT' 2>/dev/null; reconcile_bundle_deps nvim '$MOCK_HINT/nvim.hint' 'https://x/deps.txt' report" 2>&1) || true
+echo "$rep" | grep -q 'tree-sitter' \
+    && echo "$rep" | grep -q 'wasmtime' \
+    && diff -q "$MOCK_HINT/nvim.hint" "$MOCK_BASE/nvim.before" >/dev/null \
+    && { echo "  PASS: report mode no rewrite"; (( PASS++ )); } \
+    || { echo "  FAIL: report mode. out=$rep"; (( FAIL++ )); ERRORS+=("T-BM8"); }
+
+# ── T-BM9: reconcile apply mode rewrites the changed dep + recomputes md5 ─────
+echo ""
+echo "T-BM9: reconcile_bundle_deps apply mode rewrites tree-sitter to v0.26.8"
+bash -c "TMP_DIR='$MOCK_TMP'; PATH=\"$MOCK_BASE/bin:\$PATH\"; source '$SCRIPT' 2>/dev/null; reconcile_bundle_deps nvim '$MOCK_HINT/nvim.hint' 'https://x/deps.txt' apply" >/dev/null 2>&1 || true
+grep -q 'tree-sitter/archive/v0.26.8' "$MOCK_HINT/nvim.hint" \
+    && ! grep -q 'v0.26.7' "$MOCK_HINT/nvim.hint" \
+    && ! grep -q 'bbb' "$MOCK_HINT/nvim.hint" \
+    && grep -q 'neovim-0.13.0' "$MOCK_HINT/nvim.hint" \
+    && { echo "  PASS: apply rewrote dep + md5, primary line untouched"; (( PASS++ )); } \
+    || { echo "  FAIL: apply mode:"; cat "$MOCK_HINT/nvim.hint"; (( FAIL++ )); ERRORS+=("T-BM9"); }
+rm -f "$MOCK_BASE/manifest_fixture"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
