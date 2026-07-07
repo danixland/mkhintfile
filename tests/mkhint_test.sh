@@ -199,6 +199,7 @@ run_mkhint() {
         -e "s|TMP_DIR=\".*\"|TMP_DIR=\"$MOCK_TMP\"|" \
         -e "s|NVCHECKER_CONFIG=\".*\"|NVCHECKER_CONFIG=\"$MOCK_BASE/nvchecker.toml\"|" \
         -e "s|PHANTOM_DEPS_FILE=\".*\"|PHANTOM_DEPS_FILE=\"$MOCK_BASE/phantom-deps\"|" \
+        -e "s|BUNDLE_MANIFEST_FILE=\".*\"|BUNDLE_MANIFEST_FILE=\"$MOCK_BASE/bundle-manifests\"|" \
         -e "s|PACKAGES_DIR=\".*\"|PACKAGES_DIR=\"$MOCK_PKGS\"|" \
         -e "s|MKHINT_CONFIG=\".*\"|MKHINT_CONFIG=\"$MOCK_BASE/config\"|" \
         "$SCRIPT" > "$tmp_script"

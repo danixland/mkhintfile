@@ -26,6 +26,12 @@ NVCHECKER_CONFIG="$HOME/.config/nvchecker/nvchecker.toml"
 # Missing file = empty list = phantom-dep handling is a no-op.
 PHANTOM_DEPS_FILE="$HOME/.config/mkhint/phantom-deps"
 
+# Packages whose extra DOWNLOAD lines are driven by an upstream deps manifest
+# (e.g. neovim's cmake.deps/deps.txt). One entry per line:
+#   <pkgname> <deps-url-template-with-{VERSION}>
+# Missing file = empty list = feature is a no-op.
+BUNDLE_MANIFEST_FILE="$HOME/.config/mkhint/bundle-manifests"
+
 # Built-package repository (slackrepo output tree: <cat>/<pkg>/<pkg>-*.txz).
 PACKAGES_DIR="/repo/"
 
