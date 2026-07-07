@@ -572,6 +572,12 @@ reconcile_bundle_deps() {
     local -a new_urls=("${urls[@]}")
     local -a changed_idx=() changed_from=() changed_to=()
     local i m
+
+    # The primary hint URL (index 0) is never reconciled, but its manifest
+    # counterpart must count as "matched" so the FYI doesn't always flag it.
+    local _pm; _pm=$(match_dep_url "${urls[0]}" "$mlist") || _pm=""
+    [[ -n "$_pm" ]] && matched_manifest["$_pm"]=1
+
     for (( i=1; i<${#urls[@]}; i++ )); do
         m=$(match_dep_url "${urls[$i]}" "$mlist") || m=""
         if [[ -z "$m" ]]; then

@@ -1737,7 +1737,12 @@ WASMTIME_URL https://github.com/bytecodealliance/wasmtime/archive/v36.0.6.tar.gz
 WASMTIME_SHA256 c
 EOF
 out=$(run_mkhint -C --force bmnvim < <(printf 'n\n') 2>&1) || true
+# FYI block is the lines between "manifest has N deps not in hint:" and the
+# next blank line. Only wasmtime (a true extra) should be listed; the
+# primary's manifest counterpart (neovim) must not be flagged as missing.
+fyi_block=$(echo "$out" | awk '/deps not in hint:/{f=1; next} f && /^$/{f=0} f')
 echo "$out" | grep -q 'deps not in hint:' && echo "$out" | grep -qi 'wasmtime' \
+    && ! echo "$fyi_block" | grep -qx 'neovim' \
     && { echo "  PASS: FYI list printed"; (( PASS++ )); } \
     || { echo "  FAIL: FYI. out=$out"; (( FAIL++ )); ERRORS+=("T-BM16"); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
