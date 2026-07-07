@@ -436,6 +436,55 @@ parse_manifest() {
     [[ -f "$file" ]] || return 0
     awk '/_URL[[:space:]]/ { print $2 }' "$file"
 }
+
+# _url_stem <url> — reduce a download URL's basename to a comparison stem:
+# drop a trailing archive extension, then a trailing -<version> or the version
+# is the whole tail after the name. Version = [vV]?[0-9]... or a 7+ hex sha.
+_url_stem() {
+    local base="${1##*/}"
+    base="${base%.tar.gz}"; base="${base%.tar.xz}"; base="${base%.tar.bz2}"
+    base="${base%.zip}"; base="${base%.tgz}"
+    # strip a trailing -<version> (version starts with optional v then a digit,
+    # or is a 7+ char hex sha)
+    if [[ "$base" =~ ^(.+)-[vV]?[0-9].*$ ]]; then
+        base="${BASH_REMATCH[1]}"
+    elif [[ "$base" =~ ^(.+)-[0-9a-f]{7,}$ ]]; then
+        base="${BASH_REMATCH[1]}"
+    fi
+    printf '%s\n' "$base"
+}
+
+# _url_repo <url> — echo owner/repo for a github URL, empty otherwise.
+_url_repo() {
+    [[ "$1" =~ github\.com/([^/]+)/([^/]+) ]] && printf '%s/%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%.git}"
+}
+
+# match_dep_url <hint_url> <manifest_url_list> — echo the manifest URL that
+# corresponds to hint_url, or nothing. Repo-path match first, then exact
+# basename-stem fallback (for blob hosts where the repo path is ambiguous).
+match_dep_url() {
+    local hint_url="$1" list="$2"
+    local hrepo; hrepo=$(_url_repo "$hint_url")
+    local m mrepo
+    # pass 1: repo-path (skip the shared-blob-host repo neovim/deps so a blob
+    # URL never wins on repo path; it must match on stem instead)
+    if [[ -n "$hrepo" && "$hrepo" != */deps ]]; then
+        while IFS= read -r m; do
+            [[ -z "$m" ]] && continue
+            mrepo=$(_url_repo "$m")
+            if [[ -n "$mrepo" && "$mrepo" != */deps && "$mrepo" == "$hrepo" ]]; then
+                printf '%s\n' "$m"; return 0
+            fi
+        done <<< "$list"
+    fi
+    # pass 2: exact stem
+    local hstem; hstem=$(_url_stem "$hint_url")
+    while IFS= read -r m; do
+        [[ -z "$m" ]] && continue
+        [[ "$(_url_stem "$m")" == "$hstem" ]] && { printf '%s\n' "$m"; return 0; }
+    done <<< "$list"
+    return 1
+}
 # ── end bundled-dep manifest handling ─────────────────────────────────────────
 
 # Create new hint file

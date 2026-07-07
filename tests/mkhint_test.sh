@@ -1473,6 +1473,44 @@ echo "$bm_out" | grep -qx 'https://github.com/libuv/libuv/archive/v1.52.1.tar.gz
     && { echo "  PASS: parse_manifest URLs only"; (( PASS++ )); } \
     || { echo "  FAIL: parse_manifest: $bm_out"; (( FAIL++ )); ERRORS+=("T-BM1"); }
 
+# ── T-BM2: match_dep_url repo-path hit ───────────────────────────────────────
+echo ""
+echo "T-BM2: match_dep_url matches by owner/repo path"
+BM_SRC='source <(sed -n "/# ── bundled-dep manifest handling/,/# ── end bundled-dep/p" '"$SCRIPT"')'
+manifest_urls='https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz
+https://github.com/luvit/luv/archive/1.53.0-0.tar.gz'
+r=$(bash -c "$BM_SRC; match_dep_url 'https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz' \"\$1\"" _ "$manifest_urls")
+[[ "$r" == 'https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz' ]] \
+    && { echo "  PASS: repo-path match"; (( PASS++ )); } \
+    || { echo "  FAIL: repo-path match got '$r'"; (( FAIL++ )); ERRORS+=("T-BM2"); }
+
+# ── T-BM3: match_dep_url stem fallback for blob host ─────────────────────────
+echo ""
+echo "T-BM3: match_dep_url stem fallback (neovim/deps/raw blob → lpeg)"
+manifest_urls='https://github.com/neovim/deps/raw/deadbeef1234567/opt/lpeg-1.1.0.tar.gz'
+r=$(bash -c "$BM_SRC; match_dep_url 'https://www.inf.puc-rio.br/~roberto/lpeg/lpeg-1.1.0.tar.gz' \"\$1\"" _ "$manifest_urls")
+[[ "$r" == 'https://github.com/neovim/deps/raw/deadbeef1234567/opt/lpeg-1.1.0.tar.gz' ]] \
+    && { echo "  PASS: stem fallback match"; (( PASS++ )); } \
+    || { echo "  FAIL: stem fallback got '$r'"; (( FAIL++ )); ERRORS+=("T-BM3"); }
+
+# ── T-BM4: match_dep_url no false prefix match ───────────────────────────────
+echo ""
+echo "T-BM4: match_dep_url does not match tree-sitter to tree-sitter-c"
+manifest_urls='https://github.com/tree-sitter/tree-sitter-c/archive/v0.24.1.tar.gz'
+r=$(bash -c "$BM_SRC; match_dep_url 'https://example.com/foo/tree-sitter-0.26.7.tar.gz' \"\$1\"" _ "$manifest_urls") || true
+[[ -z "$r" ]] \
+    && { echo "  PASS: no false prefix match"; (( PASS++ )); } \
+    || { echo "  FAIL: false match got '$r'"; (( FAIL++ )); ERRORS+=("T-BM4"); }
+
+# ── T-BM5: match_dep_url no match → empty ────────────────────────────────────
+echo ""
+echo "T-BM5: match_dep_url returns empty on no match"
+manifest_urls='https://github.com/foo/bar/archive/v1.0.tar.gz'
+r=$(bash -c "$BM_SRC; match_dep_url 'https://github.com/baz/qux/archive/v2.0.tar.gz' \"\$1\"" _ "$manifest_urls") || true
+[[ -z "$r" ]] \
+    && { echo "  PASS: empty on no match"; (( PASS++ )); } \
+    || { echo "  FAIL: expected empty got '$r'"; (( FAIL++ )); ERRORS+=("T-BM5"); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
