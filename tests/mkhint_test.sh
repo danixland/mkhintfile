@@ -1641,6 +1641,22 @@ echo "$out" | grep -qi 'manifest' \
     || { echo "  PASS: no manifest code for non-listed"; (( PASS++ )); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests"
 
+# ── T-BM12: --force with --hintfile → exit 1 ─────────────────────────────────
+echo ""
+echo "T-BM12: --force is --check-only (errors with --hintfile/--new/--fix-current)"
+set +e
+o1=$(run_mkhint --force -f curl -V 1.0 2>&1); c1=$?
+o2=$(run_mkhint --force -n curl 2>&1); c2=$?
+o3=$(run_mkhint --force -F 2>&1); c3=$?
+set -e
+# grep the guard message too, so this pins our check rather than getopt's own rejection
+[[ $c1 -eq 1 && $c2 -eq 1 && $c3 -eq 1 ]] \
+    && echo "$o1" | grep -q 'only valid with --check' \
+    && echo "$o2" | grep -q 'only valid with --check' \
+    && echo "$o3" | grep -q 'only valid with --check' \
+    && { echo "  PASS: --force mutually exclusive"; (( PASS++ )); } \
+    || { echo "  FAIL: exits $c1 $c2 $c3"; (( FAIL++ )); ERRORS+=("T-BM12"); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

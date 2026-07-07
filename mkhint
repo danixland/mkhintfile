@@ -59,6 +59,7 @@ SHOW_LIST=""
 RUN_REVIEW=""
 COMMAND=""
 NO_DL=0
+FORCE=0
 
 # Show help message
 show_help() {
@@ -1247,7 +1248,7 @@ check_updates() {
 main() {
     local parsed
     parsed=$(getopt -o vV:f:n:lcCdNhRF \
-        --long version,set-version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review,fix-current \
+        --long version,set-version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review,fix-current,force \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
@@ -1295,6 +1296,10 @@ main() {
                 ;;
             --no-dl|-N)
                 NO_DL=1
+                shift
+                ;;
+            --force)
+                FORCE=1
                 shift
                 ;;
             --help|-h)
@@ -1350,6 +1355,11 @@ main() {
 
     if [[ "$COMMAND" == "fix-current" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
         echo "Error: --fix-current cannot be combined with --set-version/--hintfile/--new" >&2
+        exit 1
+    fi
+
+    if [[ $FORCE -eq 1 && "$COMMAND" != "check" ]]; then
+        echo "Error: --force is only valid with --check" >&2
         exit 1
     fi
 
