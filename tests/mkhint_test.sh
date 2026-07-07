@@ -1511,6 +1511,26 @@ r=$(bash -c "$BM_SRC; match_dep_url 'https://github.com/baz/qux/archive/v2.0.tar
     && { echo "  PASS: empty on no match"; (( PASS++ )); } \
     || { echo "  FAIL: expected empty got '$r'"; (( FAIL++ )); ERRORS+=("T-BM5"); }
 
+# ── T-BM6: load_bundle_manifests + manifest_url_for ──────────────────────────
+echo ""
+echo "T-BM6: manifest_url_for substitutes {VERSION}, unlisted pkg → non-zero"
+cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+# comment
+neovim  https://example.com/neovim/v{VERSION}/deps.txt
+EOF
+BM_SRC='source <(sed -n "/# ── bundled-dep manifest handling/,/# ── end bundled-dep/p" '"$SCRIPT"')'
+r=$(bash -c "BUNDLE_MANIFEST_FILE='$MOCK_BASE/bundle-manifests'; $BM_SRC; load_bundle_manifests; manifest_url_for neovim 0.13.0")
+[[ "$r" == 'https://example.com/neovim/v0.13.0/deps.txt' ]] \
+    && { echo "  PASS: templated URL"; (( PASS++ )); } \
+    || { echo "  FAIL: templated URL got '$r'"; (( FAIL++ )); ERRORS+=("T-BM6a"); }
+set +e
+bash -c "BUNDLE_MANIFEST_FILE='$MOCK_BASE/bundle-manifests'; $BM_SRC; load_bundle_manifests; manifest_url_for curl 8.0" >/dev/null 2>&1
+rc=$?
+set -e
+[[ $rc -ne 0 ]] \
+    && { echo "  PASS: unlisted pkg non-zero"; (( PASS++ )); } \
+    || { echo "  FAIL: unlisted pkg should be non-zero"; (( FAIL++ )); ERRORS+=("T-BM6b"); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

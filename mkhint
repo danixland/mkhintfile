@@ -485,6 +485,34 @@ match_dep_url() {
     done <<< "$list"
     return 1
 }
+
+# Loaded map: pkg name -> URL template. Populated by load_bundle_manifests.
+declare -A BUNDLE_MANIFESTS=()
+load_bundle_manifests() {
+    BUNDLE_MANIFESTS=()
+    [[ -f "$BUNDLE_MANIFEST_FILE" ]] || return 0
+    local line pkg url
+    while IFS= read -r line; do
+        line="${line%%#*}"
+        [[ -z "${line// }" ]] && continue
+        read -r pkg url <<< "$line"
+        [[ -n "$pkg" && -n "$url" ]] && BUNDLE_MANIFESTS["$pkg"]="$url"
+    done < "$BUNDLE_MANIFEST_FILE"
+}
+
+# manifest_url_for <pkg> <version> — echo the manifest URL for pkg with
+# {VERSION} substituted. Non-zero if pkg is not listed.
+manifest_url_for() {
+    local pkg="$1" ver="$2"
+    local tmpl="${BUNDLE_MANIFESTS[$pkg]:-}"
+    [[ -z "$tmpl" ]] && return 1
+    printf '%s\n' "${tmpl//\{VERSION\}/$ver}"
+}
+
+# True if pkg has a bundle manifest configured.
+pkg_has_manifest() {
+    [[ -n "${BUNDLE_MANIFESTS[$1]:-}" ]]
+}
 # ── end bundled-dep manifest handling ─────────────────────────────────────────
 
 # Create new hint file
