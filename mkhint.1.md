@@ -1,4 +1,4 @@
-% MKHINT(1) mkhint 1.1.2 | User Commands
+% MKHINT(1) mkhint 1.1.3 | User Commands
 % Danilo M.
 % July 2026
 

@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.3] - 2026-07-07
+
+### Fixed
+- Version bump now rewrites download URLs that use the upstream `-` form of a
+  date/tag, not just the packaged `_` form. Previously a hint like exploitdb
+  (`VERSION="2026_07_07"`, `DOWNLOAD=".../2026-07-07/..."`) kept its stale URL
+  and md5 after `--hintfile -V` / `--new -V`. Both `_` and `-` variants of the
+  old→new version are now substituted.
+
 ## [1.1.2] - 2026-07-05
 
 ### Fixed

@@ -22,6 +22,7 @@ setup() {
              "$MOCK_REPO/development/gopkg" \
              "$MOCK_REPO/development/rustpkg" \
              "$MOCK_REPO/development/mixedpkg" \
+             "$MOCK_REPO/system/datedpkg" \
              "$MOCK_HINT" \
              "$MOCK_TMP"
 
@@ -31,6 +32,21 @@ PRGNAM="curl"
 VERSION="8.5.0"
 HOMEPAGE="https://curl.se/"
 DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    # .info whose VERSION is underscore-dated but DOWNLOAD URL is dash-dated
+    # (exploitdb pattern). --new -V must bump both forms.
+    cat > "$MOCK_REPO/system/datedpkg/datedpkg.info" << 'EOF'
+PRGNAM="datedpkg"
+VERSION="2026_04_30"
+HOMEPAGE="https://example.com/"
+DOWNLOAD="https://example.com/archive/2026-04-30/datedpkg-2026-04-30.tar.gz"
 MD5SUM="abc123def456abc123def456abc123de"
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
@@ -1412,6 +1428,33 @@ assert_exit_code "--help exits 0" 0 "$code"
 echo "$out" | grep -q 'man mkhint' \
     && { echo "  PASS: --help points at man page"; (( PASS++ )); } \
     || { echo "  FAIL: --help missing man pointer: $out"; (( FAIL++ )); ERRORS+=("T73 pointer"); }
+
+# ── T74: --hintfile -V dash-dated URL → both '_' and '-' forms bumped ────────
+echo ""
+echo "T74: --hintfile -V dashed URL → underscore VERSION and dashed URL both bumped"
+cat > "$MOCK_HINT/datedpkg.hint" << 'EOF'
+VERSION="2026_04_30"
+ARCH="x86_64"
+DOWNLOAD="https://example.com/archive/2026-04-30/datedpkg-2026-04-30.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+EOF
+run_mkhint -f datedpkg -V 2026_07_07 < <(printf 'n\n')
+assert_contains       "VERSION underscore bumped"  "$MOCK_HINT/datedpkg.hint" 'VERSION="2026_07_07"'
+assert_contains       "URL dashed date bumped"     "$MOCK_HINT/datedpkg.hint" 'datedpkg-2026-07-07.tar.gz'
+assert_not_contains   "no stale dashed date"       "$MOCK_HINT/datedpkg.hint" '2026-04-30'
+assert_not_contains   "MD5SUM recalculated"        "$MOCK_HINT/datedpkg.hint" 'abc123def456'
+
+# ── T75: --new -V dash-dated .info → both forms bumped ───────────────────────
+echo ""
+echo "T75: --new -V dashed .info URL → underscore VERSION and dashed URL both bumped"
+rm -f "$MOCK_HINT/datedpkg.hint" "$MOCK_HINT/datedpkg.hint.bak"
+run_mkhint -n datedpkg -V 2026_07_07
+assert_contains       "VERSION underscore bumped"  "$MOCK_HINT/datedpkg.hint" 'VERSION="2026_07_07"'
+assert_contains       "URL dashed date bumped"     "$MOCK_HINT/datedpkg.hint" 'datedpkg-2026-07-07.tar.gz'
+assert_not_contains   "no stale dashed date"       "$MOCK_HINT/datedpkg.hint" '2026-04-30'
+assert_not_contains   "MD5SUM recalculated"        "$MOCK_HINT/datedpkg.hint" 'abc123def456'
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown

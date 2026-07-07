@@ -39,7 +39,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.1.2"
+readonly MKHINT_VERSION="1.1.3"
 
 # Variables
 VERSION=""
@@ -463,7 +463,11 @@ create_new_hint_file() {
             if [[ -n "$VERSION" ]]; then
                 local old_version
                 old_version=$(grep '^VERSION=' "$normalized_file" | sed 's/VERSION="//;s/"$//')
+                # bump both '_' and '-' variants (see update_hint_file note)
                 sed -i "s/${old_version}/${VERSION}/g" "$normalized_file"
+                if [[ "$old_version" == *_* || "$VERSION" == *_* ]]; then
+                    sed -i "s/${old_version//_/-}/${VERSION//_/-}/g" "$normalized_file"
+                fi
                 update_checksums "$normalized_file"
             fi
 
@@ -792,8 +796,14 @@ update_hint_file() {
     # Extract current version from hint file
     old_version=$(grep '^VERSION=' "$normalized_file" | sed 's/VERSION="//;s/"$//')
 
-    # Use sed for global replacement of OLD_VERSION in all variables
+    # Use sed for global replacement of OLD_VERSION in all variables.
+    # SlackBuild VERSION uses '_' but download URLs often carry the upstream
+    # '-' form (dates like 2026-07-07, tags), so bump both variants — otherwise
+    # a dated URL keeps pointing at the old tarball and its md5 goes stale.
     sed -i "s/${old_version}/${new_version}/g" "$normalized_file"
+    if [[ "$old_version" == *_* || "$new_version" == *_* ]]; then
+        sed -i "s/${old_version//_/-}/${new_version//_/-}/g" "$normalized_file"
+    fi
 
     update_checksums "$normalized_file"
 
