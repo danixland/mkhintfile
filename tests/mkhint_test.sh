@@ -1457,6 +1457,22 @@ assert_contains       "URL dashed date bumped"     "$MOCK_HINT/datedpkg.hint" 'd
 assert_not_contains   "no stale dashed date"       "$MOCK_HINT/datedpkg.hint" '2026-04-30'
 assert_not_contains   "MD5SUM recalculated"        "$MOCK_HINT/datedpkg.hint" 'abc123def456'
 
+# ── T-BM1: parse_manifest extracts URLs from NAME_URL/NAME_SHA256 pairs ──────
+echo ""
+echo "T-BM1: parse_manifest extracts URLs, ignores SHA256 lines"
+cat > "$MOCK_BASE/deps.txt" << 'EOF'
+LIBUV_URL https://github.com/libuv/libuv/archive/v1.52.1.tar.gz
+LIBUV_SHA256 478baf2599bfbc
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.7.tar.gz
+TREESITTER_SHA256 4343107ad1097
+EOF
+bm_out=$(bash -c 'source <(sed -n "/# ── bundled-dep manifest handling/,/# ── end bundled-dep/p" '"$SCRIPT"'); parse_manifest '"$MOCK_BASE"'/deps.txt')
+echo "$bm_out" | grep -qx 'https://github.com/libuv/libuv/archive/v1.52.1.tar.gz' \
+    && echo "$bm_out" | grep -qx 'https://github.com/tree-sitter/tree-sitter/archive/v0.26.7.tar.gz' \
+    && ! echo "$bm_out" | grep -q '478baf' \
+    && { echo "  PASS: parse_manifest URLs only"; (( PASS++ )); } \
+    || { echo "  FAIL: parse_manifest: $bm_out"; (( FAIL++ )); ERRORS+=("T-BM1"); }
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

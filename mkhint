@@ -425,6 +425,19 @@ fix_current() {
     echo "Done. $count package(s) with phantom deps."
 }
 
+# ── bundled-dep manifest handling ─────────────────────────────────────────────
+# Reconcile a bundle package's extra DOWNLOAD lines against an upstream deps
+# manifest (opt-in via BUNDLE_MANIFEST_FILE). See docs spec 2026-07-07.
+
+# parse_manifest <file> — print one download URL per line for each NAME_URL
+# entry. SHA256 lines ignored (hints use MD5SUM; we re-download and md5).
+parse_manifest() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    awk '/_URL[[:space:]]/ { print $2 }' "$file"
+}
+# ── end bundled-dep manifest handling ─────────────────────────────────────────
+
 # Create new hint file
 create_new_hint_file() {
     cd "$HINT_DIR"
