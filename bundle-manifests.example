@@ -1,0 +1,9 @@
+# mkhint bundle-manifests — packages whose extra DOWNLOAD lines are driven by an
+# upstream deps manifest. Copy to ~/.config/mkhint/bundle-manifests and edit.
+#
+# Format: <pkgname> <deps-url-template>
+# {VERSION} is replaced with the hint's version at check time (both '_' and '-'
+# forms are tried). One entry per line; '#' comments and blank lines ignored.
+#
+# Example (neovim publishes cmake.deps/deps.txt with pinned dep URLs):
+# neovim  https://raw.githubusercontent.com/neovim/neovim/v{VERSION}/cmake.deps/deps.txt
