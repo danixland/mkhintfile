@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-07-07
+
+### Added
+- Manifest-driven bundled-dep updates. Packages listed in the new
+  `BUNDLE_MANIFEST_FILE` (`<pkg> <deps-url-template>`) have their extra
+  `DOWNLOAD` lines reconciled against an upstream deps manifest (e.g. neovim's
+  `cmake.deps/deps.txt`) during `--check`: matched lines are rewritten to the
+  manifest's pinned URLs and their checksums recomputed. `--new` reports the
+  reconcile without changing the hint.
+- `--force` flag (check-only): run the bundled-dep reconcile even when the
+  primary version is unchanged (e.g. to retry after a failed manifest fetch).
+
 ## [1.1.3] - 2026-07-07
 
 ### Fixed

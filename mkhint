@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.1.3"
+readonly MKHINT_VERSION="1.2.0"
 
 # Variables
 VERSION=""
@@ -80,12 +80,14 @@ Options:
   --fix-current, -F        Add/merge DELREQUIRES for -current phantom deps across the whole repo
   --delete, -d FILE        Delete a hint file (and .bak if present)
   --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
+  --force                  With --check: reconcile bundled deps even if the primary version is unchanged
   --help, -h               Show this help message
 
 Config file: ${MKHINT_CONFIG}$([[ -f "$MKHINT_CONFIG" ]] && echo " (present, sourced)" || echo " (not present, using defaults)")
 Hint files are stored in: $HINT_DIR
 Temporary files are stored in: $TMP_DIR
 Phantom-dep list (for --fix-current / --new): $PHANTOM_DEPS_FILE
+Bundle manifests (for --check bundled-dep reconcile): $BUNDLE_MANIFEST_FILE
 
 See 'man mkhint' for usage examples, configuration, and exit codes.
 EOF

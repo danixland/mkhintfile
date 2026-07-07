@@ -19,7 +19,7 @@ HINT_DIR="/etc/slackrepo/SBo-danix/hintfiles/"  # where .hint files live
 
 Both `mkhint` and the bash completion script now source `~/.config/mkhint/config`, so their path constants no longer drift.
 
-An optional sourced config file `~/.config/mkhint/config` (plain bash `KEY="value"`) is read right after the baked-in defaults, overriding any of: `REPO_DIR`, `HINT_DIR`, `PACKAGES_DIR` (default `/repo/`, the built-package repository holding `*.txz` files), `NVCHECKER_CONFIG`, `PHANTOM_DEPS_FILE`, `TMP_DIR`. A missing file leaves the previous defaults in place. Loaded via `MKHINT_CONFIG` / `[[ -f "$MKHINT_CONFIG" ]] && source`; the completion script sources the same file so the two stay in sync.
+An optional sourced config file `~/.config/mkhint/config` (plain bash `KEY="value"`) is read right after the baked-in defaults, overriding any of: `REPO_DIR`, `HINT_DIR`, `PACKAGES_DIR` (default `/repo/`, the built-package repository holding `*.txz` files), `NVCHECKER_CONFIG`, `PHANTOM_DEPS_FILE`, `BUNDLE_MANIFEST_FILE`, `TMP_DIR`. A missing file leaves the previous defaults in place. Loaded via `MKHINT_CONFIG` / `[[ -f "$MKHINT_CONFIG" ]] && source`; the completion script sources the same file so the two stay in sync.
 
 nvchecker config path is read from `$HOME/.config/nvchecker/nvchecker.toml` (not hardcoded):
 
@@ -150,6 +150,18 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 - `--no-dl` / `-N`: downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` after `MD5SUM_x86_64=`. Works with `--hintfile` or `--new`. Error if used alone.
 - `--fix-current` / `-F`: bulk sweep. Loads `PHANTOM_DEPS_FILE`, scans every `.info` in `REPO_DIR`, and for each package whose REQUIRES contains a phantom dep, ensures its hint carries the matching `DELREQUIRES`. No existing hint → create a minimal `DELREQUIRES="..."` file. Existing hint → back up to `.bak` and union the phantom deps into its `DELREQUIRES` line (dedup), leaving all other content untouched. Idempotent: if the deps are already present, the file is left alone and no `.bak` is written. No per-package prompts, safe under `set -e`. Mutually exclusive with `-V`/`-f`/`-n` (exit 1). Empty/missing list → "Nothing to do", exit 0. Helpers: `load_phantom_deps`, `phantom_deps_in_info`, `merge_delrequires`, `fix_current`.
 - `--new` phantom-dep hook: after commenting out REQUIRES, `create_new_hint_file` appends `DELREQUIRES="..."` for any phantom dep found in the `.info` REQUIRES. Same list as `--fix-current`.
+- `--check` bundled-dep reconcile: for packages listed in `BUNDLE_MANIFEST_FILE`
+  (`<pkg> <url-template-with-{VERSION}>`), after the primary bump mkhint fetches
+  the upstream deps manifest (`NAME_URL`/`NAME_SHA256` pairs, e.g. neovim's
+  `cmake.deps/deps.txt`), matches each extra `DOWNLOAD` line via
+  `match_dep_url` (repo-path first, exact basename-stem fallback for blob
+  hosts), and rewrites changed lines + recomputes their md5. Runs
+  automatically when the primary changed this run, otherwise only with
+  `--force` (check-only flag). `--new` on a listed package prints the reconcile
+  report without changing the hint. Manifest deps with no hint line are listed
+  as an FYI, never added (would need a SlackBuild change). Helpers:
+  `load_bundle_manifests`, `manifest_url_for`, `fetch_manifest`,
+  `parse_manifest`, `match_dep_url`, `reconcile_bundle_deps`.
 - `--delete` / `-d`: removes hint file and `.bak` if present. Accepts multiple package names. Exits 2 on first missing file.
 - Downloads go to `/tmp/mkhint/download` (single shared temp file, deleted after md5 calculation).
 - Multiline `DOWNLOAD`/`DOWNLOAD_x86_64`: parsed via `parse_multiline_var` (awk). First URL always re-downloaded. Continuation URLs (2+) prompt user interactively — changed URLs re-downloaded, unchanged URLs keep existing md5. Written back via `perl -i` with `\` continuation format preserved. Shared logic in `update_checksums` → `_process_download_var`.

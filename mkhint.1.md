@@ -1,4 +1,4 @@
-% MKHINT(1) mkhint 1.1.3 | User Commands
+% MKHINT(1) mkhint 1.2.0 | User Commands
 % Danilo M.
 % July 2026
 
@@ -87,6 +87,11 @@ show a diff and prompt **[K]eep / [D]elete / [S]kip**.
 : Download and recalculate checksums, then append `NODOWNLOAD=yes`. Use with
 **\--hintfile** or **\--new**; an error on its own.
 
+**\--force**
+: Only meaningful with **\--check**. Reconcile a bundle package's extra download
+lines against its upstream manifest even when the primary version has not
+changed. Use to retry after a previous manifest fetch failed.
+
 **\--version**, **-v**
 : Print `mkhint <version>` and exit.
 
@@ -163,6 +168,10 @@ and the **\--new** phantom-dep hook no-ops.
 `TMP_DIR` (`/tmp/mkhint`)
 : Scratch directory for downloads.
 
+`BUNDLE_MANIFEST_FILE` (`$HOME/.config/mkhint/bundle-manifests`)
+: Packages whose extra download lines are reconciled against an upstream deps
+manifest during **\--check**. See BUNDLED DEPENDENCIES.
+
 # FILES
 
 *~/.config/mkhint/config*
@@ -170,6 +179,9 @@ and the **\--new** phantom-dep hook no-ops.
 
 *~/.config/mkhint/phantom-deps*
 : Phantom dependency list.
+
+*~/.config/mkhint/bundle-manifests*
+: Bundle manifest list.
 
 *~/.config/nvchecker/nvchecker.toml*
 : nvchecker configuration.
@@ -200,6 +212,23 @@ respective directories. With **-f** *package* already on the command line,
 **-V** *TAB* suggests the current `VERSION` from that package's hint. The
 completion script sources the same *~/.config/mkhint/config*, so its paths stay
 in sync with **mkhint**.
+
+# BUNDLED DEPENDENCIES
+
+Some SlackBuilds bundle several tarballs in one DOWNLOAD line: a primary source
+plus pinned dependencies (neovim is the canonical case). Such packages can be
+listed in the file named by BUNDLE_MANIFEST_FILE
+(default \~/.config/mkhint/bundle-manifests), one entry per line:
+
+    neovim  https://raw.githubusercontent.com/neovim/neovim/v{VERSION}/cmake.deps/deps.txt
+
+The URL is an upstream, machine-readable deps manifest (NAME_URL / NAME_SHA256
+pairs); {VERSION} is substituted with the hint's version. For a listed package,
+\--new prints a reconcile report (no changes), and \--check reconciles the extra
+download lines against the manifest after the primary bump, rewriting changed
+lines and recomputing their checksums. Bundled deps are never followed to their
+own latest release; only the manifest's pinned URLs are used. Manifest entries
+with no matching download line are reported but not added.
 
 # SEE ALSO
 
