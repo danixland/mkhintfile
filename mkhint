@@ -1446,6 +1446,25 @@ main() {
             if [[ "${check_nvchecker_take:-0}" -eq 1 ]]; then
                 nvtake -c "$NVCHECKER_CONFIG" "$HINT_FILE" >&2 || true
             fi
+
+            load_bundle_manifests
+            local _bm_pkg="${HINT_FILE%.hint}"
+            _bm_pkg="${_bm_pkg##*/}"
+            if pkg_has_manifest "$_bm_pkg"; then
+                local _bm_hint="${HINT_DIR%/}/${_bm_pkg}.hint"
+                local _bm_cur; _bm_cur=$(grep '^VERSION=' "$_bm_hint" | sed 's/VERSION="//;s/"$//')
+                local _bm_url; _bm_url=$(manifest_url_for "$_bm_pkg" "$_bm_cur")
+                echo ""
+                echo "Bundled-dep reconcile: $_bm_pkg (manifest @ $_bm_cur)"
+                reconcile_bundle_deps "$_bm_pkg" "$_bm_hint" "$_bm_url" report || true
+                local _bm_ans
+                read -r -p "Apply bundled-dep updates for $_bm_pkg? [Y/n] " _bm_ans
+                _bm_ans="${_bm_ans:-Y}"
+                if [[ "$_bm_ans" =~ ^[Yy]$ ]]; then
+                    reconcile_bundle_deps "$_bm_pkg" "$_bm_hint" "$_bm_url" apply || true
+                fi
+            fi
+
             prompt_slackrepo "$HINT_FILE"
             ;;
         new)

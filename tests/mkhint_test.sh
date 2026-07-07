@@ -1747,6 +1747,36 @@ echo "$out" | grep -q 'deps not in hint:' && echo "$out" | grep -qi 'wasmtime' \
     || { echo "  FAIL: FYI. out=$out"; (( FAIL++ )); ERRORS+=("T-BM16"); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
 
+# ── T-BM18: --hintfile -V on a listed pkg reconciles bundled deps ────────────
+echo ""
+echo "T-BM18: -f listed pkg -V bumps primary AND reconciles bundled deps"
+cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+bmnvim  https://example.com/bmnvim/v{VERSION}/deps.txt
+EOF
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.14.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz
+TREESITTER_SHA256 b
+EOF
+cat > "$MOCK_HINT/bmnvim.hint" << 'EOF'
+VERSION="0.13.0"
+DOWNLOAD="https://github.com/neovim/neovim/archive/v0.13.0/bmnvim-0.13.0.tar.gz \
+    https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz"
+MD5SUM="aaa \
+    bbb"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+ARCH="x86_64"
+EOF
+# stdin: continuation-URL prompt(s) for the primary bump, then apply Y, then slackrepo n
+run_mkhint -f bmnvim -V 0.14.0 < <(printf '\nY\nn\n') >/dev/null 2>&1 || true
+grep -q 'VERSION="0.14.0"' "$MOCK_HINT/bmnvim.hint" \
+    && grep -q 'tree-sitter/archive/v0.26.8' "$MOCK_HINT/bmnvim.hint" \
+    && { echo "  PASS: -f -V bumped primary + reconciled deps"; (( PASS++ )); } \
+    || { echo "  FAIL: -f -V parity:"; cat "$MOCK_HINT/bmnvim.hint"; (( FAIL++ )); ERRORS+=("T-BM18"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
