@@ -1202,46 +1202,71 @@ check_updates() {
         fi
     fi
 
+    local updated=()
     if [[ ${#outdated_pkgs[@]} -eq 0 ]]; then
         echo "all up to date"
-        return 0
+    else
+        # Report
+        echo ""
+        echo "Updates available:"
+        local i
+        for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
+            local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
+            printf "  %-30s %s -> %s%s\n" "${outdated_pkgs[$i]}" "${outdated_old[$i]}" "${outdated_new[$i]}" "$note"
+        done
+        echo ""
+
+        # Per-package confirm + update
+        for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
+            local p="${outdated_pkgs[$i]}"
+            local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
+            local answer
+            read -r -p "${p}  ${outdated_old[$i]} -> ${outdated_new[$i]}${note}. Update? [Y/n] " answer
+            answer="${answer:-Y}"
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                update_hint_file "$p" "${outdated_new[$i]}"
+                nvtake -c "$NVCHECKER_CONFIG" "$p" >&2 || true
+                updated+=("$p")
+            fi
+        done
+
+        # Split updated packages: existing → update, new → build.
+        if [[ ${#updated[@]} -gt 0 ]]; then
+            local -a existing=() fresh=()
+            local up
+            for up in "${updated[@]}"; do
+                if pkg_in_repo "$up"; then existing+=("$up"); else fresh+=("$up"); fi
+            done
+            run_slackrepo update "${existing[@]}"
+            run_slackrepo build  "${fresh[@]}"
+        fi
     fi
 
-    # Report
-    echo ""
-    echo "Updates available:"
-    local i
-    for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
-        local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
-        printf "  %-30s %s -> %s%s\n" "${outdated_pkgs[$i]}" "${outdated_old[$i]}" "${outdated_new[$i]}" "$note"
-    done
-    echo ""
-
-    # Per-package confirm + update
-    local updated=()
-    for (( i=0; i<${#outdated_pkgs[@]}; i++ )); do
-        local p="${outdated_pkgs[$i]}"
-        local note=""; [[ "${outdated_flag[$i]}" == "?downgrade" ]] && note=" (?downgrade)"
-        local answer
-        read -r -p "${p}  ${outdated_old[$i]} -> ${outdated_new[$i]}${note}. Update? [Y/n] " answer
-        answer="${answer:-Y}"
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-            update_hint_file "$p" "${outdated_new[$i]}"
-            nvtake -c "$NVCHECKER_CONFIG" "$p" >&2 || true
-            updated+=("$p")
+    # Phase 2: bundled-dep manifest reconcile for listed packages.
+    load_bundle_manifests
+    local was_updated
+    for pkg in "${targets[@]}"; do
+        pkg_has_manifest "$pkg" || continue
+        local hintpath="${HINT_DIR%/}/${pkg}.hint"
+        [[ -f "$hintpath" ]] || continue
+        was_updated=0
+        local u
+        for u in "${updated[@]}"; do [[ "$u" == "$pkg" ]] && was_updated=1; done
+        if [[ $was_updated -eq 0 && $FORCE -ne 1 ]]; then
+            continue
+        fi
+        local cur; cur=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
+        local murl; murl=$(manifest_url_for "$pkg" "$cur") || continue
+        echo ""
+        echo "Bundled-dep reconcile: $pkg (manifest @ $cur)"
+        reconcile_bundle_deps "$pkg" "$hintpath" "$murl" report || true
+        local ans
+        read -r -p "Apply bundled-dep updates for $pkg? [Y/n] " ans
+        ans="${ans:-Y}"
+        if [[ "$ans" =~ ^[Yy]$ ]]; then
+            reconcile_bundle_deps "$pkg" "$hintpath" "$murl" apply || true
         fi
     done
-
-    # Split updated packages: existing → update, new → build.
-    if [[ ${#updated[@]} -gt 0 ]]; then
-        local -a existing=() fresh=()
-        local up
-        for up in "${updated[@]}"; do
-            if pkg_in_repo "$up"; then existing+=("$up"); else fresh+=("$up"); fi
-        done
-        run_slackrepo update "${existing[@]}"
-        run_slackrepo build  "${fresh[@]}"
-    fi
 }
 
 # Main function

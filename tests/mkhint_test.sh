@@ -1657,6 +1657,91 @@ set -e
     && { echo "  PASS: --force mutually exclusive"; (( PASS++ )); } \
     || { echo "  FAIL: exits $c1 $c2 $c3"; (( FAIL++ )); ERRORS+=("T-BM12"); }
 
+# ── T-BM13..16: --check Phase 2 bundled-dep reconcile for listed packages ────
+setup_bmnvim_check() {
+    cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+bmnvim  https://example.com/bmnvim/v{VERSION}/deps.txt
+EOF
+    cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz
+TREESITTER_SHA256 b
+EOF
+    cat > "$MOCK_HINT/bmnvim.hint" << 'EOF'
+VERSION="0.13.0"
+DOWNLOAD="https://github.com/neovim/neovim/archive/v0.13.0/bmnvim-0.13.0.tar.gz \
+    https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz"
+MD5SUM="aaa \
+    bbb"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+ARCH="x86_64"
+EOF
+    # Seed nvchecker the same way T23/T25/etc do: an [bmnvim] section in the
+    # toml (required by _has_nvchecker_section) and a keyfile entry reporting
+    # latest == 0.13.0, so the primary version is unchanged this run.
+    cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+
+[bmnvim]
+source = "github"
+github = "neovim/neovim"
+EOF
+    cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "bmnvim": { "version": "0.13.0" } } }
+EOF
+    cp "$MOCK_BASE/new_ver.json" "$MOCK_BASE/old_ver.json"
+}
+
+# T-BM13: primary unchanged, no --force → Phase 2 skipped (dep stays v0.26.7)
+echo ""
+echo "T-BM13: --check listed, primary current, no --force → deps untouched"
+setup_bmnvim_check
+run_mkhint -C bmnvim < <(printf '\n') >/dev/null 2>&1 || true
+grep -q 'v0.26.7' "$MOCK_HINT/bmnvim.hint" \
+    && { echo "  PASS: Phase 2 skipped"; (( PASS++ )); } \
+    || { echo "  FAIL: dep changed without --force"; (( FAIL++ )); ERRORS+=("T-BM13"); }
+
+# T-BM14: primary unchanged, --force → Phase 2 runs, dep bumped on Y
+echo ""
+echo "T-BM14: --check --force listed, primary current → deps reconciled"
+setup_bmnvim_check
+run_mkhint -C --force bmnvim < <(printf 'Y\n') >/dev/null 2>&1 || true
+grep -q 'tree-sitter/archive/v0.26.8' "$MOCK_HINT/bmnvim.hint" \
+    && { echo "  PASS: --force ran Phase 2"; (( PASS++ )); } \
+    || { echo "  FAIL: --force did not bump dep"; cat "$MOCK_HINT/bmnvim.hint"; (( FAIL++ )); ERRORS+=("T-BM14"); }
+
+# T-BM15: manifest fetch fails → deps unchanged, retry msg
+echo ""
+echo "T-BM15: --check --force, manifest fetch fails → deps unchanged"
+setup_bmnvim_check
+rm -f "$MOCK_BASE/manifest_fixture"
+out=$(run_mkhint -C --force bmnvim < <(printf 'Y\n') 2>&1) || true
+grep -q 'v0.26.7' "$MOCK_HINT/bmnvim.hint" && echo "$out" | grep -qi 'manifest unavailable' \
+    && { echo "  PASS: fetch fail handled"; (( PASS++ )); } \
+    || { echo "  FAIL: fetch fail. out=$out"; (( FAIL++ )); ERRORS+=("T-BM15"); }
+
+# T-BM16: manifest-only deps FYI printed
+echo ""
+echo "T-BM16: --check --force prints manifest-only-deps FYI"
+setup_bmnvim_check
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.7.tar.gz
+TREESITTER_SHA256 b
+WASMTIME_URL https://github.com/bytecodealliance/wasmtime/archive/v36.0.6.tar.gz
+WASMTIME_SHA256 c
+EOF
+out=$(run_mkhint -C --force bmnvim < <(printf 'n\n') 2>&1) || true
+echo "$out" | grep -q 'deps not in hint:' && echo "$out" | grep -qi 'wasmtime' \
+    && { echo "  PASS: FYI list printed"; (( PASS++ )); } \
+    || { echo "  FAIL: FYI. out=$out"; (( FAIL++ )); ERRORS+=("T-BM16"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
