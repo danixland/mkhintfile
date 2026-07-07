@@ -1,0 +1,2 @@
+ - [ ] add a `--special` flag to add a package to the bundled list, asking for a link to it's upstream deps list file
+ - [ ] consider splitting `mkhint` into multiple files for easier maintenance
