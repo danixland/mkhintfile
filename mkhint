@@ -513,6 +513,18 @@ manifest_url_for() {
 pkg_has_manifest() {
     [[ -n "${BUNDLE_MANIFESTS[$1]:-}" ]]
 }
+
+# fetch_manifest <url> — download the manifest to a temp file, echo its path.
+# Non-zero on wget failure. Caller cleans up (path is under TMP_DIR).
+fetch_manifest() {
+    local url="$1"
+    [[ -d "$TMP_DIR" ]] || mkdir -p "$TMP_DIR"
+    local out="${TMP_DIR}/manifest"
+    rm -f "$out"
+    wget -O "$out" "$url" >&2 || return 1
+    [[ -s "$out" ]] || return 1
+    printf '%s\n' "$out"
+}
 # ── end bundled-dep manifest handling ─────────────────────────────────────────
 
 # Create new hint file

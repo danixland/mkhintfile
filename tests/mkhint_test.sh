@@ -209,22 +209,29 @@ run_mkhint() {
     return $rc
 }
 
-# Mock wget — writes fake content, md5 will be deterministic
+# Mock wget — writes fake content, md5 will be deterministic. URLs containing
+# deps.txt instead serve a manifest fixture ($MOCK_BASE/manifest_fixture) if
+# present, so bundled-dep manifest tests can control fetch_manifest's input.
 mock_wget() {
     # Replace wget in PATH with a fake that writes URL as content
     mkdir -p "$MOCK_BASE/bin"
-    cat > "$MOCK_BASE/bin/wget" << 'EOF'
+    cat > "$MOCK_BASE/bin/wget" << EOF
 #!/bin/bash
-# fake wget: write URL to -O target
 url=""
 out=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -O) out="$2"; shift 2 ;;
-        *) url="$1"; shift ;;
+while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+        -O) out="\$2"; shift 2 ;;
+        *) url="\$1"; shift ;;
     esac
 done
-echo "FAKE_CONTENT_FOR_${url}" > "$out"
+if [[ "\$url" == *deps.txt* && -f "$MOCK_BASE/manifest_fixture" ]]; then
+    cat "$MOCK_BASE/manifest_fixture" > "\$out"
+elif [[ "\$url" == *deps.txt* ]]; then
+    exit 1   # simulate manifest fetch failure when no fixture set
+else
+    echo "FAKE_CONTENT_FOR_\${url}" > "\$out"
+fi
 exit 0
 EOF
     chmod +x "$MOCK_BASE/bin/wget"
@@ -1530,6 +1537,20 @@ set -e
 [[ $rc -ne 0 ]] \
     && { echo "  PASS: unlisted pkg non-zero"; (( PASS++ )); } \
     || { echo "  FAIL: unlisted pkg should be non-zero"; (( FAIL++ )); ERRORS+=("T-BM6b"); }
+
+# ── T-BM7: fetch_manifest downloads to a temp file ───────────────────────────
+echo ""
+echo "T-BM7: fetch_manifest returns a path with the fixture content"
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+LIBUV_URL https://github.com/libuv/libuv/archive/v1.52.1.tar.gz
+LIBUV_SHA256 abc
+EOF
+BM_SRC='source <(sed -n "/# ── bundled-dep manifest handling/,/# ── end bundled-dep/p" '"$SCRIPT"')'
+mpath=$(bash -c "TMP_DIR='$MOCK_TMP'; PATH=\"$MOCK_BASE/bin:\$PATH\"; $BM_SRC; fetch_manifest 'https://example.com/v1/deps.txt'")
+[[ -f "$mpath" ]] && grep -q 'LIBUV_URL' "$mpath" \
+    && { echo "  PASS: fetch_manifest content"; (( PASS++ )); } \
+    || { echo "  FAIL: fetch_manifest path='$mpath'"; (( FAIL++ )); ERRORS+=("T-BM7"); }
+rm -f "$MOCK_BASE/manifest_fixture"
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
