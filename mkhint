@@ -686,6 +686,18 @@ create_new_hint_file() {
 
             echo "generated $normalized_file from $(basename $info)."
             echo "Check variables before using."
+
+            load_bundle_manifests
+            local _bm_pkg="${normalized_file%.hint}"
+            _bm_pkg="${_bm_pkg##*/}"
+            if pkg_has_manifest "$_bm_pkg"; then
+                local _bm_ver; _bm_ver=$(grep '^VERSION=' "$normalized_file" | sed 's/VERSION="//;s/"$//')
+                local _bm_url; _bm_url=$(manifest_url_for "$_bm_pkg" "$_bm_ver")
+                echo ""
+                echo "$_bm_pkg: bundled-dep manifest check"
+                reconcile_bundle_deps "$_bm_pkg" "$normalized_file" "$_bm_url" report || true
+            fi
+
             add_nvchecker_section "${normalized_file%.hint}" "$info"
         fi
     else

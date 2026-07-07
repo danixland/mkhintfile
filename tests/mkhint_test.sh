@@ -23,6 +23,7 @@ setup() {
              "$MOCK_REPO/development/rustpkg" \
              "$MOCK_REPO/development/mixedpkg" \
              "$MOCK_REPO/system/datedpkg" \
+             "$MOCK_REPO/editors/bmnvim" \
              "$MOCK_HINT" \
              "$MOCK_TMP"
 
@@ -162,6 +163,22 @@ MD5SUM="66666666666666666666666666666666"
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 REQUIRES="libfoo google-go-lang libbar"
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    # bundled-dep manifest fixture (T-BM10/11)
+    cat > "$MOCK_REPO/editors/bmnvim/bmnvim.info" << 'EOF'
+PRGNAM="bmnvim"
+VERSION="0.13.0"
+HOMEPAGE="https://neovim.io"
+DOWNLOAD="https://github.com/neovim/neovim/archive/v0.13.0/bmnvim-0.13.0.tar.gz \
+          https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz"
+MD5SUM="aaa \
+        bbb"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
 MAINTAINER="Test"
 EMAIL="test@test.com"
 EOF
@@ -1593,6 +1610,36 @@ grep -q 'tree-sitter/archive/v0.26.8' "$MOCK_HINT/nvim.hint" \
     && { echo "  PASS: apply rewrote dep + md5, primary line untouched"; (( PASS++ )); } \
     || { echo "  FAIL: apply mode:"; cat "$MOCK_HINT/nvim.hint"; (( FAIL++ )); ERRORS+=("T-BM9"); }
 rm -f "$MOCK_BASE/manifest_fixture"
+
+# ── T-BM10: --new listed pkg prints reconcile report, does NOT rewrite ───────
+echo ""
+echo "T-BM10: --new listed pkg → manifest report, hint not rewritten by manifest"
+cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+bmnvim  https://example.com/bmnvim/v{VERSION}/deps.txt
+EOF
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz
+TREESITTER_SHA256 b
+EOF
+rm -f "$MOCK_HINT/bmnvim.hint"
+out=$(run_mkhint -n bmnvim 2>&1)
+echo "$out" | grep -qi 'tree-sitter' \
+    && grep -q 'v0.26.7' "$MOCK_HINT/bmnvim.hint" \
+    && { echo "  PASS: --new reported, kept .info dep version"; (( PASS++ )); } \
+    || { echo "  FAIL: --new manifest report. out=$out"; (( FAIL++ )); ERRORS+=("T-BM10"); }
+
+# ── T-BM11: --new non-listed pkg runs no manifest code ───────────────────────
+echo ""
+echo "T-BM11: --new non-listed pkg → no manifest output"
+: > "$MOCK_BASE/bundle-manifests"
+rm -f "$MOCK_HINT/curl.hint"
+out=$(run_mkhint -n curl 2>&1)
+echo "$out" | grep -qi 'manifest' \
+    && { echo "  FAIL: unexpected manifest output for curl"; (( FAIL++ )); ERRORS+=("T-BM11"); } \
+    || { echo "  PASS: no manifest code for non-listed"; (( PASS++ )); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests"
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
