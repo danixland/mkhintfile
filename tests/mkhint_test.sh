@@ -1817,6 +1817,27 @@ echo "$out" | grep -q 'deps not in hint:' && echo "$out" | grep -qi 'wasmtime' \
     || { echo "  FAIL: FYI. out=$out"; (( FAIL++ )); ERRORS+=("T-BM16"); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
 
+# ── T-BM24: all-current reconcile does NOT prompt to apply ───────────────────
+# When the report finds no changed dep, the caller must skip the "Apply?"
+# prompt entirely (report mode returns 0; a change returns 2).
+echo ""
+echo "T-BM24: --check --force, bundled deps all current → no apply prompt"
+setup_bmnvim_check
+# manifest tree-sitter at the SAME version as the hint (0.26.7), different shape
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.7.tar.gz
+TREESITTER_SHA256 b
+EOF
+out=$(run_mkhint -C --force bmnvim < <(printf '\n') 2>&1) || true
+echo "$out" | grep -q 'bundled deps all current' \
+    && ! echo "$out" | grep -q 'Apply bundled-dep updates' \
+    && grep -q 'v0.26.7' "$MOCK_HINT/bmnvim.hint" \
+    && { echo "  PASS: no prompt when all current"; (( PASS++ )); } \
+    || { echo "  FAIL: T-BM24 prompted on no-op. out=$out"; (( FAIL++ )); ERRORS+=("T-BM24"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
+
 # ── T-BM18: --hintfile -V on a listed pkg reconciles bundled deps ────────────
 echo ""
 echo "T-BM18: -f listed pkg -V bumps primary AND reconciles bundled deps"

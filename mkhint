@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.2.2"
+readonly MKHINT_VERSION="1.2.3"
 
 # Variables
 VERSION=""
@@ -578,6 +578,9 @@ fetch_manifest() {
 # mode = report (print only) | apply (rewrite matched changed lines + md5).
 # Reconciles the DOWNLOAD line's extra URLs (index >= 1) against the manifest.
 # The primary URL (index 0) is never touched here. Guarded for set -e.
+# In report mode: returns 2 when there are changes to apply, 0 otherwise (all
+# current, no deps, fetch/parse fail) so a caller can skip the apply prompt.
+# apply mode always returns 0.
 reconcile_bundle_deps() {
     local pkg="$1" hint="$2" murl="$3" mode="$4"
 
@@ -667,7 +670,10 @@ reconcile_bundle_deps() {
         for (( i=0; i<${#changed_idx[@]}; i++ )); do
             printf '  %s  %s  ->  %s\n' "${changed_name[$i]}" "${changed_oldver[$i]}" "${changed_newver[$i]}"
         done
-        return 0
+        # report mode signals "there are changes to apply" via exit 2, so the
+        # caller can skip the apply prompt when nothing changed. Every other
+        # report exit (no change, no deps, fetch fail) returns 0.
+        return 2
     fi
 
     # apply mode: recompute md5 only for changed lines, rewrite DOWNLOAD+MD5SUM.
@@ -1325,12 +1331,17 @@ check_updates() {
         local murl; murl=$(manifest_url_for "$pkg" "$cur") || continue
         echo ""
         echo "Bundled-dep reconcile: $pkg (manifest @ $cur)"
-        reconcile_bundle_deps "$pkg" "$hintpath" "$murl" report || true
-        local ans
-        read -r -p "Apply bundled-dep updates for $pkg? [Y/n] " ans
-        ans="${ans:-Y}"
-        if [[ "$ans" =~ ^[Yy]$ ]]; then
-            reconcile_bundle_deps "$pkg" "$hintpath" "$murl" apply || true
+        local rc=0
+        reconcile_bundle_deps "$pkg" "$hintpath" "$murl" report || rc=$?
+        # rc==2 means the report found changes to apply; anything else (0, or a
+        # real error) means nothing to prompt about.
+        if [[ $rc -eq 2 ]]; then
+            local ans
+            read -r -p "Apply bundled-dep updates for $pkg? [Y/n] " ans
+            ans="${ans:-Y}"
+            if [[ "$ans" =~ ^[Yy]$ ]]; then
+                reconcile_bundle_deps "$pkg" "$hintpath" "$murl" apply || true
+            fi
         fi
     done
 }
@@ -1516,12 +1527,15 @@ main() {
                 local _bm_url; _bm_url=$(manifest_url_for "$_bm_pkg" "$_bm_cur")
                 echo ""
                 echo "Bundled-dep reconcile: $_bm_pkg (manifest @ $_bm_cur)"
-                reconcile_bundle_deps "$_bm_pkg" "$_bm_hint" "$_bm_url" report || true
-                local _bm_ans
-                read -r -p "Apply bundled-dep updates for $_bm_pkg? [Y/n] " _bm_ans
-                _bm_ans="${_bm_ans:-Y}"
-                if [[ "$_bm_ans" =~ ^[Yy]$ ]]; then
-                    reconcile_bundle_deps "$_bm_pkg" "$_bm_hint" "$_bm_url" apply || true
+                local _bm_rc=0
+                reconcile_bundle_deps "$_bm_pkg" "$_bm_hint" "$_bm_url" report || _bm_rc=$?
+                if [[ $_bm_rc -eq 2 ]]; then
+                    local _bm_ans
+                    read -r -p "Apply bundled-dep updates for $_bm_pkg? [Y/n] " _bm_ans
+                    _bm_ans="${_bm_ans:-Y}"
+                    if [[ "$_bm_ans" =~ ^[Yy]$ ]]; then
+                        reconcile_bundle_deps "$_bm_pkg" "$_bm_hint" "$_bm_url" apply || true
+                    fi
                 fi
             fi
 

@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.3] - 2026-07-08
+
+### Fixed
+- The bundled-dep reconcile no longer prompts `Apply bundled-dep updates?`
+  when nothing changed. Report mode now signals whether there is anything to
+  apply (exit 2 = changes, 0 = all current / no deps / fetch fail), and the
+  `--check` and `--hintfile -V` callers only prompt when there is. Previously a
+  `--force` run on an up-to-date bundle package always asked, with nothing to
+  do.
+
 ## [1.2.2] - 2026-07-08
 
 ### Fixed
