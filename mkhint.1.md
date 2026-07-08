@@ -1,4 +1,4 @@
-% MKHINT(1) mkhint 1.2.0 | User Commands
+% MKHINT(1) mkhint 1.2.1 | User Commands
 % Danilo M.
 % July 2026
 
@@ -226,7 +226,10 @@ The URL is an upstream, machine-readable deps manifest (NAME_URL / NAME_SHA256
 pairs); {VERSION} is substituted with the hint's version. For a listed package,
 \--new prints a reconcile report (no changes), and \--check reconciles the extra
 download lines against the manifest after the primary bump, rewriting changed
-lines and recomputing their checksums. Bundled deps are never followed to their
+lines and recomputing their checksums. A dep counts as changed only when its
+upstream version differs, not merely its URL path shape, so a manifest's
+bare-tag archive URL and the hint's SBo-fetched tree URL at the same version
+are treated as current. Bundled deps are never followed to their
 own latest release; only the manifest's pinned URLs are used. Manifest entries
 with no matching download line are reported but not added.
 

@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-07-08
+
+### Fixed
+- Bundled-dep reconcile now detects change by upstream version, not raw URL
+  string. Manifests serve bare-tag archive URLs
+  (`.../archive/v0.26.7.tar.gz`) while hints use the SBo-fetched tree shape
+  (`.../archive/v0.26.7/tree-sitter-0.26.7.tar.gz`); these are the same
+  version in different path shapes, so the old string comparison flagged every
+  dep as changed at a version that had not moved. Reconcile now extracts the
+  version from each URL (`_url_version`) and only rewrites a line when the
+  version actually differs.
+- The changed-deps report now shows `name old-ver -> new-ver` from the parsed
+  identity and version, instead of version-stripped URL basenames.
+
 ## [1.2.0] - 2026-07-07
 
 ### Added

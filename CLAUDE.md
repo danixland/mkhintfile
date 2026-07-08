@@ -155,13 +155,19 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
   the upstream deps manifest (`NAME_URL`/`NAME_SHA256` pairs, e.g. neovim's
   `cmake.deps/deps.txt`), matches each extra `DOWNLOAD` line via
   `match_dep_url` (repo-path first, exact basename-stem fallback for blob
-  hosts), and rewrites changed lines + recomputes their md5. Runs
-  automatically when the primary changed this run, otherwise only with
-  `--force` (check-only flag). `--new` on a listed package prints the reconcile
-  report without changing the hint. Manifest deps with no hint line are listed
-  as an FYI, never added (would need a SlackBuild change). Helpers:
-  `load_bundle_manifests`, `manifest_url_for`, `fetch_manifest`,
-  `parse_manifest`, `match_dep_url`, `reconcile_bundle_deps`.
+  hosts). A matched line is rewritten only when its upstream *version* differs
+  (`_url_version` parses the version from each URL basename and normalizes it),
+  not when only the URL path shape differs, so a manifest's bare-tag
+  `archive/v0.26.7.tar.gz` and the hint's SBo-fetched
+  `archive/v0.26.7/tree-sitter-0.26.7.tar.gz` at the same version are treated as
+  current. Changed lines get their md5 recomputed; the report shows
+  `name old-ver -> new-ver`. Runs automatically when the primary changed this
+  run, otherwise only with `--force` (check-only flag). `--new` on a listed
+  package prints the reconcile report without changing the hint. Manifest deps
+  with no hint line are listed as an FYI, never added (would need a SlackBuild
+  change). Helpers: `load_bundle_manifests`, `manifest_url_for`,
+  `fetch_manifest`, `parse_manifest`, `match_dep_url`, `_url_version`,
+  `reconcile_bundle_deps`.
 - `--delete` / `-d`: removes hint file and `.bak` if present. Accepts multiple package names. Exits 2 on first missing file.
 - Downloads go to `/tmp/mkhint/download` (single shared temp file, deleted after md5 calculation).
 - Multiline `DOWNLOAD`/`DOWNLOAD_x86_64`: parsed via `parse_multiline_var` (awk). First URL always re-downloaded. Continuation URLs (2+) prompt user interactively — changed URLs re-downloaded, unchanged URLs keep existing md5. Written back via `perl -i` with `\` continuation format preserved. Shared logic in `update_checksums` → `_process_download_var`.

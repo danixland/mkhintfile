@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.2.0"
+readonly MKHINT_VERSION="1.2.1"
 
 # Variables
 VERSION=""
@@ -457,6 +457,29 @@ _url_stem() {
     printf '%s\n' "$base"
 }
 
+# _url_version <url> — extract the version token from a download URL's basename.
+# Same archive stripping as _url_stem, then take the trailing version: a
+# leading-v-or-digit tail after a "-" separator, else the whole basename if it
+# is itself a version (e.g. "v0.26.7"). Used to detect real version drift
+# independent of URL path shape. Empty if no version found.
+_url_version() {
+    local base="${1##*/}"
+    base="${base%.tar.gz}"; base="${base%.tar.xz}"; base="${base%.tar.bz2}"
+    base="${base%.zip}"; base="${base%.tgz}"
+    local ver=""
+    if [[ "$base" =~ -([vV]?[0-9][^/]*)$ ]]; then
+        ver="${BASH_REMATCH[1]}"
+    elif [[ "$base" =~ -([0-9a-f]{7,})$ ]]; then
+        ver="${BASH_REMATCH[1]}"
+    elif [[ "$base" =~ ^([vV]?[0-9][^/]*)$ ]]; then
+        ver="${BASH_REMATCH[1]}"
+    elif [[ "$base" =~ ^([0-9a-f]{7,})$ ]]; then
+        ver="${BASH_REMATCH[1]}"
+    fi
+    ver="${ver#[vV]}"
+    printf '%s\n' "$(_normalize_version "$ver")"
+}
+
 # _url_repo <url> — echo owner/repo for a github URL, empty otherwise.
 _url_repo() {
     [[ "$1" =~ github\.com/([^/]+)/([^/]+) ]] && printf '%s/%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%.git}"
@@ -572,7 +595,8 @@ reconcile_bundle_deps() {
     # Track which manifest URLs got matched (for the FYI of unmatched ones).
     local -A matched_manifest=()
     local -a new_urls=("${urls[@]}")
-    local -a changed_idx=() changed_from=() changed_to=()
+    local -a changed_idx=() changed_to=()
+    local -a changed_name=() changed_oldver=() changed_newver=()
     local i m
 
     # The primary hint URL (index 0) is never reconciled, but its manifest
@@ -587,9 +611,16 @@ reconcile_bundle_deps() {
             continue
         fi
         matched_manifest["$m"]=1
-        if [[ "$m" != "${urls[$i]}" ]]; then
-            changed_idx+=("$i"); changed_from+=("${urls[$i]}"); changed_to+=("$m")
-            new_urls[$i]="$m"
+        # Detect real drift by version, not URL string: the manifest and the
+        # hint often carry the same version in different path shapes (bare-tag
+        # archive vs SBo-fetched tree). Only a version change is a change.
+        local hv mv
+        hv=$(_url_version "${urls[$i]}")
+        mv=$(_url_version "$m")
+        if [[ -n "$mv" && "$hv" != "$mv" ]]; then
+            changed_idx+=("$i"); changed_to+=("$m"); new_urls[$i]="$m"
+            changed_name+=("$(_dep_label "${urls[$i]}")")
+            changed_oldver+=("${hv:-?}"); changed_newver+=("$mv")
         fi
     done
 
@@ -612,7 +643,7 @@ reconcile_bundle_deps() {
         echo ""
         echo "$pkg bundled deps changed upstream:"
         for (( i=0; i<${#changed_idx[@]}; i++ )); do
-            printf '  %s  ->  %s\n' "${changed_from[$i]##*/}" "${changed_to[$i]##*/}"
+            printf '  %s  %s  ->  %s\n' "${changed_name[$i]}" "${changed_oldver[$i]}" "${changed_newver[$i]}"
         done
         return 0
     fi

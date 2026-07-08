@@ -1611,6 +1611,37 @@ grep -q 'tree-sitter/archive/v0.26.8' "$MOCK_HINT/nvim.hint" \
     || { echo "  FAIL: apply mode:"; cat "$MOCK_HINT/nvim.hint"; (( FAIL++ )); ERRORS+=("T-BM9"); }
 rm -f "$MOCK_BASE/manifest_fixture"
 
+# ── T-BM17: same version, different URL shape → NOT a change (v1.2.1 regr.) ───
+# The manifest serves bare-tag archive URLs (.../archive/v0.26.7.tar.gz) while
+# the hint uses the SBo-fetched tree shape (.../archive/v0.26.7/tree-sitter-
+# 0.26.7.tar.gz). Same version → reconcile must report all current, no rewrite.
+echo ""
+echo "T-BM17: reconcile detects no change when only URL shape differs at same version"
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
+NVIM_SHA256 a
+TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.26.7.tar.gz
+TREESITTER_SHA256 b
+EOF
+cat > "$MOCK_HINT/nvim17.hint" << 'EOF'
+VERSION="0.13.0"
+DOWNLOAD="https://github.com/neovim/neovim/archive/v0.13.0/neovim-0.13.0.tar.gz \
+    https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz"
+MD5SUM="aaa \
+    bbb"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+ARCH="x86_64"
+EOF
+cp "$MOCK_HINT/nvim17.hint" "$MOCK_BASE/nvim17.before"
+rep17=$(bash -c "TMP_DIR='$MOCK_TMP'; PATH=\"$MOCK_BASE/bin:\$PATH\"; source '$SCRIPT' 2>/dev/null; reconcile_bundle_deps nvim '$MOCK_HINT/nvim17.hint' 'https://x/deps.txt' report" 2>&1) || true
+echo "$rep17" | grep -q 'all current' \
+    && ! echo "$rep17" | grep -q 'changed upstream' \
+    && diff -q "$MOCK_HINT/nvim17.hint" "$MOCK_BASE/nvim17.before" >/dev/null \
+    && { echo "  PASS: same-version shape diff → no change"; (( PASS++ )); } \
+    || { echo "  FAIL: T-BM17 falsely flagged change. out=$rep17"; (( FAIL++ )); ERRORS+=("T-BM17"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_HINT/nvim17.hint" "$MOCK_BASE/nvim17.before"
+
 # ── T-BM10: --new listed pkg prints reconcile report, does NOT rewrite ───────
 echo ""
 echo "T-BM10: --new listed pkg → manifest report, hint not rewritten by manifest"
