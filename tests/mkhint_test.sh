@@ -1860,13 +1860,42 @@ DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 ARCH="x86_64"
 EOF
-# stdin: continuation-URL prompt(s) for the primary bump, then apply Y, then slackrepo n
-run_mkhint -f bmnvim -V 0.14.0 < <(printf '\nY\nn\n') >/dev/null 2>&1 || true
+# stdin: apply Y, then slackrepo n. NO continuation-URL prompt: bmnvim is
+# manifest-listed, so the primary bump must NOT ask for the extra URLs.
+out=$(run_mkhint -f bmnvim -V 0.14.0 < <(printf 'Y\nn\n') 2>&1) || true
 grep -q 'VERSION="0.14.0"' "$MOCK_HINT/bmnvim.hint" \
     && grep -q 'tree-sitter/archive/v0.26.8' "$MOCK_HINT/bmnvim.hint" \
-    && { echo "  PASS: -f -V bumped primary + reconciled deps"; (( PASS++ )); } \
-    || { echo "  FAIL: -f -V parity:"; cat "$MOCK_HINT/bmnvim.hint"; (( FAIL++ )); ERRORS+=("T-BM18"); }
+    && echo "$out" | grep -q 'left to bundled-dep reconcile' \
+    && ! echo "$out" | grep -q 'line 2 (current)' \
+    && { echo "  PASS: -f -V bumped primary + reconciled deps, no continuation prompt"; (( PASS++ )); } \
+    || { echo "  FAIL: -f -V parity/suppression. out=$out"; cat "$MOCK_HINT/bmnvim.hint"; (( FAIL++ )); ERRORS+=("T-BM18"); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
+
+# ── T-BM25: NON-listed multiline pkg still prompts for continuation URLs ──────
+# Guard against over-suppression: a package with no bundle manifest must keep
+# the interactive continuation-URL prompt on a primary bump.
+echo ""
+echo "T-BM25: non-listed multiline pkg → continuation URL prompt still shown"
+: > "$MOCK_BASE/bundle-manifests"   # nothing listed
+cat > "$MOCK_HINT/plainml.hint" << 'EOF'
+VERSION="1.0.0"
+DOWNLOAD="https://example.com/plainml-1.0.0.tar.gz \
+    https://example.com/extra-9.9.tar.gz"
+MD5SUM="aaa \
+    bbb"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+ARCH="x86_64"
+EOF
+# stdin: blank (keep continuation URL), then slackrepo n. The read -p prompt is
+# suppressed by bash when stdin is piped, so assert on the always-echoed
+# "line N (current)" header instead.
+out=$(run_mkhint -f plainml -V 1.1.0 < <(printf '\nn\n') 2>&1) || true
+echo "$out" | grep -q 'line 2 (current)' \
+    && ! echo "$out" | grep -q 'left to bundled-dep reconcile' \
+    && { echo "  PASS: non-listed still prompts"; (( PASS++ )); } \
+    || { echo "  FAIL: non-listed suppression leak. out=$out"; (( FAIL++ )); ERRORS+=("T-BM25"); }
+rm -f "$MOCK_HINT/plainml.hint" "$MOCK_HINT/plainml.hint.bak" "$MOCK_BASE/bundle-manifests"
 
 # ── T-BM19: --check --force apply writes a .bak before rewriting the hint ────
 echo ""

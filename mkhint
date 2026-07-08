@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.2.3"
+readonly MKHINT_VERSION="1.2.4"
 
 # Variables
 VERSION=""
@@ -992,11 +992,17 @@ suggest_version() {
 }
 
 # Download files and update MD5SUM/MD5SUM_x86_64 in hint file
+# update_checksums <file> [skip_continuation_prompt]
+# skip_continuation_prompt=1 leaves continuation (index >= 1) URLs untouched and
+# does not prompt for them — used for manifest-listed packages, whose extra
+# lines Phase 2 (reconcile_bundle_deps) rewrites from the upstream manifest, so
+# hand-editing them here would be a pointless double-touch.
 update_checksums() {
     local file="$1"
+    local skip_cont="${2:-0}"
 
-    _process_download_var "DOWNLOAD" "MD5SUM" "$file"
-    _process_download_var "DOWNLOAD_x86_64" "MD5SUM_x86_64" "$file"
+    _process_download_var "DOWNLOAD" "MD5SUM" "$file" "$skip_cont"
+    _process_download_var "DOWNLOAD_x86_64" "MD5SUM_x86_64" "$file" "$skip_cont"
 }
 
 # Process one DOWNLOAD/MD5SUM variable pair in a hint file
@@ -1004,6 +1010,7 @@ _process_download_var() {
     local dl_var="$1"
     local md5_var="$2"
     local file="$3"
+    local skip_cont="${4:-0}"
 
     # Read current URLs into array
     mapfile -t urls < <(parse_multiline_var "$dl_var" "$file")
@@ -1017,11 +1024,17 @@ _process_download_var() {
     # Save original URLs for change detection after prompt
     local orig_urls=("${urls[@]}")
 
-    # Prompt user to update continuation URLs if present
+    # Prompt user to update continuation URLs if present. Skipped for
+    # manifest-listed packages: Phase 2 (reconcile_bundle_deps) owns those lines.
     if (( ${#urls[@]} > 1 )); then
-        echo ""
-        echo "Multiline ${dl_var} detected in $(basename "$file")."
-        prompt_continuation_urls urls "$dl_var"
+        if [[ "$skip_cont" == 1 ]]; then
+            echo ""
+            echo "Multiline ${dl_var} in $(basename "$file"): continuation URLs left to bundled-dep reconcile."
+        else
+            echo ""
+            echo "Multiline ${dl_var} detected in $(basename "$file")."
+            prompt_continuation_urls urls "$dl_var"
+        fi
     fi
 
     # Download and calculate md5 for each URL
@@ -1099,7 +1112,14 @@ update_hint_file() {
         sed -i "s/${old_version//_/-}/${new_version//_/-}/g" "$normalized_file"
     fi
 
-    update_checksums "$normalized_file"
+    # For manifest-listed packages, skip the continuation-URL prompt — Phase 2
+    # (reconcile_bundle_deps) rewrites those lines from the upstream manifest.
+    load_bundle_manifests
+    local _pkg="${normalized_file%.hint}"; _pkg="${_pkg##*/}"
+    local _skip_cont=0
+    if pkg_has_manifest "$_pkg"; then _skip_cont=1; fi
+
+    update_checksums "$normalized_file" "$_skip_cont"
 
     if [[ $NO_DL -eq 1 ]]; then
         add_nodownload "$normalized_file"

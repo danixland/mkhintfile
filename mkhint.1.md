@@ -1,4 +1,4 @@
-% MKHINT(1) mkhint 1.2.3 | User Commands
+% MKHINT(1) mkhint 1.2.4 | User Commands
 % Danilo M.
 % July 2026
 
@@ -231,7 +231,9 @@ upstream version differs, not merely its URL path shape, so a manifest's
 bare-tag archive URL and the hint's SBo-fetched tree URL at the same version
 are treated as current. Bundled deps are never followed to their
 own latest release; only the manifest's pinned URLs are used. Manifest entries
-with no matching download line are reported but not added.
+with no matching download line are reported but not added. During the primary
+version bump of a listed package, **mkhint** does not prompt to edit the extra
+download lines by hand, since the manifest reconcile owns them.
 
 # SEE ALSO
 

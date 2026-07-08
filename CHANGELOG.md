@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.4] - 2026-07-08
+
+### Changed
+- On a primary version bump of a manifest-listed package, the interactive
+  continuation-URL prompt is now suppressed: those extra `DOWNLOAD` lines are
+  owned by Phase 2 (`reconcile_bundle_deps`), so hand-editing them during the
+  bump was a pointless double-touch. Non-listed packages still prompt as before.
+  Threaded via a `skip_cont` flag through `update_hint_file` →
+  `update_checksums` → `_process_download_var`.
+
+### Fixed
+- `update_hint_file` no longer aborts (`set -e`) right after backing up when the
+  package has no bundle manifest: the manifest-lookup guard was written as
+  `pkg_has_manifest ... && x=1`, whose false result killed the run. This would
+  have broken every non-listed `--hintfile -V` update.
+
 ## [1.2.3] - 2026-07-08
 
 ### Fixed
