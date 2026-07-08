@@ -1642,6 +1642,45 @@ echo "$rep17" | grep -q 'all current' \
     || { echo "  FAIL: T-BM17 falsely flagged change. out=$rep17"; (( FAIL++ )); ERRORS+=("T-BM17"); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_HINT/nvim17.hint" "$MOCK_BASE/nvim17.before"
 
+# ── T-BM22: _url_version yields equal versions across URL-shape classes ───────
+# One case per shape class, not per dep: name-carrying vs bare-tag; name with an
+# embedded digit-dot (lua-compat-5.3); package-rev suffix (luv 1.52.1-0); sha
+# pin (luajit); mixed-case repo (utf8proc); shared /deps blob (lpeg). Each pair
+# is the same upstream version in two shapes → _url_version must match.
+echo ""
+echo "T-BM22: _url_version equal across shape classes (name/bare, digit-name, pkgrev, sha, case, /deps)"
+declare -a UV_PAIRS=(
+  # hint_url|manifest_url|label
+  "https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz|https://github.com/tree-sitter/tree-sitter/archive/v0.26.7.tar.gz|name-vs-bare"
+  "https://github.com/lunarmodules/lua-compat-5.3/archive/v0.13/lua-compat-5.3-0.13.tar.gz|https://github.com/lunarmodules/lua-compat-5.3/archive/v0.13.tar.gz|digit-in-name"
+  "https://github.com/luvit/luv/releases/download/1.52.1-0/luv-1.52.1-0.tar.gz|https://github.com/luvit/luv/archive/1.52.1-0.tar.gz|pkgrev-suffix"
+  "https://github.com/luajit/luajit/archive/fbb36bb/LuaJIT-fbb36bb6bfa88716a47c58bcf9ce9f2ef752abac.tar.gz|https://github.com/luajit/luajit/archive/fbb36bb6bfa88716a47c58bcf9ce9f2ef752abac.tar.gz|sha-pin-mixedcase"
+  "https://github.com/JuliaStrings/utf8proc/archive/v2.11.3/utf8proc-2.11.3.tar.gz|https://github.com/juliastrings/utf8proc/archive/v2.11.3.tar.gz|mixed-case-repo"
+  "https://www.inf.puc-rio.br/~roberto/lpeg/lpeg-1.1.0.tar.gz|https://github.com/neovim/deps/raw/deadbeef1234567/opt/lpeg-1.1.0.tar.gz|deps-blob"
+)
+uv_fail=""
+for pair in "${UV_PAIRS[@]}"; do
+    IFS='|' read -r huv muv lbl <<< "$pair"
+    hv=$(bash -c "source '$SCRIPT' 2>/dev/null; _url_version '$huv'")
+    mv=$(bash -c "source '$SCRIPT' 2>/dev/null; _url_version '$muv'")
+    [[ -n "$hv" && "$hv" == "$mv" ]] || uv_fail+=" $lbl($hv≠$mv)"
+done
+# and a real bump MUST differ
+bump_h=$(bash -c "source '$SCRIPT' 2>/dev/null; _url_version 'https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz'")
+bump_m=$(bash -c "source '$SCRIPT' 2>/dev/null; _url_version 'https://github.com/tree-sitter/tree-sitter/archive/v0.26.8.tar.gz'")
+[[ "$bump_h" != "$bump_m" ]] || uv_fail+=" real-bump-not-detected"
+[[ -z "$uv_fail" ]] \
+    && { echo "  PASS: all shape classes equal, real bump differs"; (( PASS++ )); } \
+    || { echo "  FAIL: T-BM22:$uv_fail"; (( FAIL++ )); ERRORS+=("T-BM22"); }
+
+# ── T-BM23: match_dep_url is case-insensitive on the repo slug ────────────────
+echo ""
+echo "T-BM23: match_dep_url matches JuliaStrings/utf8proc to juliastrings/utf8proc"
+r=$(bash -c "$BM_SRC; match_dep_url 'https://github.com/JuliaStrings/utf8proc/archive/v2.11.3/utf8proc-2.11.3.tar.gz' \"\$1\"" _ 'https://github.com/juliastrings/utf8proc/archive/v2.11.3.tar.gz')
+[[ "$r" == 'https://github.com/juliastrings/utf8proc/archive/v2.11.3.tar.gz' ]] \
+    && { echo "  PASS: case-insensitive repo match"; (( PASS++ )); } \
+    || { echo "  FAIL: case match got '$r'"; (( FAIL++ )); ERRORS+=("T-BM23"); }
+
 # ── T-BM10: --new listed pkg prints reconcile report, does NOT rewrite ───────
 echo ""
 echo "T-BM10: --new listed pkg → manifest report, hint not rewritten by manifest"

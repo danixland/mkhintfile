@@ -4,17 +4,37 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.2] - 2026-07-08
+
+### Fixed
+- Completes the 1.2.1 version-aware reconcile against real-world URL shapes.
+  Verified against all 13 bundled deps of the live neovim 0.12.4 hint; 1.2.1's
+  `_url_version` mis-parsed several of them and 1.2.1 was never correct in the
+  field.
+- `_url_version` now derives the version by stripping the URL's own github repo
+  name from the basename, so dep names that themselves contain digits/dashes
+  (e.g. `lua-compat-5.3`) parse correctly instead of splitting the name as a
+  version. A bare-tag basename (no name prefix) is taken as the whole version,
+  which fixes package-rev suffixes like `luv` `1.52.1-0` being truncated to `0`.
+  Non-github hosts and the shared `neovim/deps` blob host fall back to the
+  trailing-version/sha heuristic.
+- `_url_repo` is now lowercased, so a dep that appears as `JuliaStrings/utf8proc`
+  in the hint and `juliastrings/utf8proc` in the manifest matches (github
+  owners/repos are case-insensitive) instead of being reported as unmatched and
+  duplicated in the manifest-only FYI.
+
 ## [1.2.1] - 2026-07-08
 
 ### Fixed
-- Bundled-dep reconcile now detects change by upstream version, not raw URL
-  string. Manifests serve bare-tag archive URLs
-  (`.../archive/v0.26.7.tar.gz`) while hints use the SBo-fetched tree shape
-  (`.../archive/v0.26.7/tree-sitter-0.26.7.tar.gz`); these are the same
-  version in different path shapes, so the old string comparison flagged every
-  dep as changed at a version that had not moved. Reconcile now extracts the
-  version from each URL (`_url_version`) and only rewrites a line when the
-  version actually differs.
+- Bundled-dep reconcile detects change by upstream version, not raw URL string.
+  Manifests serve bare-tag archive URLs (`.../archive/v0.26.7.tar.gz`) while
+  hints use the SBo-fetched tree shape
+  (`.../archive/v0.26.7/tree-sitter-0.26.7.tar.gz`); these are the same version
+  in different path shapes, so the old string comparison flagged every dep as
+  changed at a version that had not moved. Reconcile now extracts the version
+  from each URL (`_url_version`) and only rewrites a line when the version
+  actually differs. (URL-shape parsing was incomplete in this release; see
+  1.2.2.)
 - The changed-deps report now shows `name old-ver -> new-ver` from the parsed
   identity and version, instead of version-stripped URL basenames.
 

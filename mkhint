@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.2.1"
+readonly MKHINT_VERSION="1.2.2"
 
 # Variables
 VERSION=""
@@ -458,31 +458,53 @@ _url_stem() {
 }
 
 # _url_version <url> — extract the version token from a download URL's basename.
-# Same archive stripping as _url_stem, then take the trailing version: a
-# leading-v-or-digit tail after a "-" separator, else the whole basename if it
-# is itself a version (e.g. "v0.26.7"). Used to detect real version drift
-# independent of URL path shape. Empty if no version found.
+# Dep names can themselves contain digits/dashes (lua-compat-5.3, win32yank-x64),
+# so no fixed regex can split name from version. When the URL is a github one we
+# know the repo name: strip a leading "<repo>-"/"<repo>_" prefix (case-insensitive,
+# since github is case-insensitive: LuaJIT vs luajit) and the rest is the version.
+# Otherwise fall back to a trailing-version / trailing-sha heuristic, then drop a
+# leading "v". Both sides of a matched pair reduce to "the part that isn't the
+# name", so equal versions in different URL shapes compare equal.
+# ponytail: name comes from the github repo. A non-github host whose basename is
+# "<digit-containing-name>-<version>" can't derive the name and may misparse; add
+# a manifest name hint if such a dep ever appears.
 _url_version() {
-    local base="${1##*/}"
+    local url="$1"
+    local base="${url##*/}"
     base="${base%.tar.gz}"; base="${base%.tar.xz}"; base="${base%.tar.bz2}"
     base="${base%.zip}"; base="${base%.tgz}"
-    local ver=""
-    if [[ "$base" =~ -([vV]?[0-9][^/]*)$ ]]; then
-        ver="${BASH_REMATCH[1]}"
+    local ver="$base"
+    local rslug; rslug=$(_url_repo "$url")
+    local repo="${rslug#*/}"                                  # bare repo name, lowercased
+    # A shared blob repo (neovim/deps/raw/.../opt/<name>-<ver>) names the host,
+    # not the dep, so its repo name is useless — fall through to the heuristic,
+    # same exclusion match_dep_url makes.
+    [[ "$rslug" == */deps ]] && repo=""
+    local base_lc="${base,,}"
+    if [[ -n "$repo" ]]; then
+        # github: name is known. Strip a "<repo>[-_]" prefix if present; else the
+        # whole basename is the version (bare-tag shape, e.g. "1.52.1-0", "v0.13").
+        if [[ "$base_lc" == "$repo-"* || "$base_lc" == "${repo}_"* ]]; then
+            ver="${base:${#repo}+1}"
+        else
+            ver="$base"
+        fi
+    elif [[ "$base" =~ -([vV]?[0-9][^/]*)$ ]]; then
+        ver="${BASH_REMATCH[1]}"                              # non-github: trailing version
     elif [[ "$base" =~ -([0-9a-f]{7,})$ ]]; then
-        ver="${BASH_REMATCH[1]}"
-    elif [[ "$base" =~ ^([vV]?[0-9][^/]*)$ ]]; then
-        ver="${BASH_REMATCH[1]}"
-    elif [[ "$base" =~ ^([0-9a-f]{7,})$ ]]; then
-        ver="${BASH_REMATCH[1]}"
+        ver="${BASH_REMATCH[1]}"                              # non-github: trailing sha
     fi
     ver="${ver#[vV]}"
     printf '%s\n' "$(_normalize_version "$ver")"
 }
 
 # _url_repo <url> — echo owner/repo for a github URL, empty otherwise.
+# Lowercased: github owners/repos are case-insensitive, and the same dep can
+# appear as JuliaStrings/utf8proc in one URL and juliastrings/utf8proc in another.
 _url_repo() {
-    [[ "$1" =~ github\.com/([^/]+)/([^/]+) ]] && printf '%s/%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%.git}"
+    [[ "$1" =~ github\.com/([^/]+)/([^/]+) ]] || return 0
+    local r; printf -v r '%s/%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%.git}"
+    printf '%s\n' "${r,,}"
 }
 
 # match_dep_url <hint_url> <manifest_url_list> — echo the manifest URL that

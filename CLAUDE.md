@@ -155,12 +155,18 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
   the upstream deps manifest (`NAME_URL`/`NAME_SHA256` pairs, e.g. neovim's
   `cmake.deps/deps.txt`), matches each extra `DOWNLOAD` line via
   `match_dep_url` (repo-path first, exact basename-stem fallback for blob
-  hosts). A matched line is rewritten only when its upstream *version* differs
-  (`_url_version` parses the version from each URL basename and normalizes it),
-  not when only the URL path shape differs, so a manifest's bare-tag
-  `archive/v0.26.7.tar.gz` and the hint's SBo-fetched
+  hosts; `_url_repo` is lowercased so a `JuliaStrings/utf8proc` hint matches a
+  `juliastrings/utf8proc` manifest — github repos are case-insensitive). A
+  matched line is rewritten only when its upstream *version* differs
+  (`_url_version`), not when only the URL path shape differs, so a manifest's
+  bare-tag `archive/v0.26.7.tar.gz` and the hint's SBo-fetched
   `archive/v0.26.7/tree-sitter-0.26.7.tar.gz` at the same version are treated as
-  current. Changed lines get their md5 recomputed; the report shows
+  current. `_url_version` derives the version by stripping the URL's own github
+  repo name from the basename (so digit/dash-containing dep names like
+  `lua-compat-5.3` parse), treats a bare-tag basename as the whole version
+  (package-rev suffixes like `1.52.1-0`), and falls back to a
+  trailing-version/sha heuristic for non-github and the shared `neovim/deps`
+  blob host. Changed lines get their md5 recomputed; the report shows
   `name old-ver -> new-ver`. Runs automatically when the primary changed this
   run, otherwise only with `--force` (check-only flag). `--new` on a listed
   package prints the reconcile report without changing the hint. Manifest deps
