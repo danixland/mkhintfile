@@ -1950,6 +1950,30 @@ echo "$arrow_line" | grep -q '0.26.7' && echo "$arrow_line" | grep -q '0.26.8' \
     || { echo "  FAIL: report versions. out=$rep"; (( FAIL++ )); ERRORS+=("T-BM21"); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_HINT/nvim.hint"
 
+# ── T-NV1: _registry_name_from_url extracts names per host ────────────────────
+echo ""
+echo "T-NV1: _registry_name_from_url host-specific parsing"
+# Build a patched script we can source for unit-testing helpers
+SRC_PATCHED=$(mktemp /tmp/mkhint_src_XXXXXX)
+sed -e "s|REPO_DIR=\".*\"|REPO_DIR=\"$MOCK_REPO\"|" \
+    -e "s|HINT_DIR=\".*\"|HINT_DIR=\"$MOCK_HINT\"|" \
+    "$SCRIPT" > "$SRC_PATCHED"
+# shellcheck disable=SC1090
+source "$SRC_PATCHED"
+
+nv_out="$MOCK_BASE/nv_helper.txt"
+{
+  echo "crates $(_registry_name_from_url 'https://crates.io/api/v1/crates/ripgrep/ripgrep-14.0.0.crate' ripgrep)"
+  echo "gems $(_registry_name_from_url 'https://rubygems.org/downloads/rails-7.1.0.gem' rails)"
+  echo "npm $(_registry_name_from_url 'https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz' left-pad)"
+  echo "fallback $(_registry_name_from_url 'https://example.com/weird/path.tar.gz' mypkg)"
+} > "$nv_out"
+
+assert_contains "crates name parsed"   "$nv_out" '^crates ripgrep$'
+assert_contains "gems name parsed"     "$nv_out" '^gems rails$'
+assert_contains "npm name parsed"      "$nv_out" '^npm left-pad$'
+assert_contains "fallback to PRGNAM"   "$nv_out" '^fallback mypkg$'
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

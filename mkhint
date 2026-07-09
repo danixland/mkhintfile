@@ -817,6 +817,32 @@ _has_nvchecker_section() {
         "$NVCHECKER_CONFIG"
 }
 
+# Extract a package name from a language-registry download URL.
+# Args: <url> <prgnam-fallback>. Prints the parsed name, or the fallback
+# (PRGNAM) when no host-specific pattern matches.
+_registry_name_from_url() {
+    local url="$1" fallback="$2"
+    case "$url" in
+        *crates.io/api/v1/crates/*)
+            # .../crates/NAME/NAME-VER.crate  or  .../crates/NAME/VER/download
+            printf '%s' "${url#*crates.io/api/v1/crates/}" | cut -d/ -f1
+            return 0 ;;
+        *rubygems.org/downloads/*)
+            # /downloads/NAME-VER.gem
+            local base="${url##*/downloads/}"; base="${base%.gem}"
+            printf '%s' "${base%-*}"
+            return 0 ;;
+        *registry.npmjs.org/*)
+            # /NAME/-/NAME-VER.tgz   (NAME may be @scope/pkg)
+            printf '%s' "${url#*registry.npmjs.org/}" | sed 's|/-/.*||'
+            return 0 ;;
+        *hackage.haskell.org/package/*)
+            printf '%s' "${url#*hackage.haskell.org/package/}" | cut -d/ -f1
+            return 0 ;;
+    esac
+    printf '%s' "$fallback"
+}
+
 # Append an nvchecker [pkg] section to NVCHECKER_CONFIG, auto-detecting the
 # source from the package's .info DOWNLOAD/HOMEPAGE. No-op if section exists.
 add_nvchecker_section() {
