@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.6] - 2026-07-09
+
+### Added
+- `--info` / `-i <pkg>`: adds a version-compare row between the header and the
+  README, comparing the SBo `.info` VERSION against the hint's VERSION. Shows
+  `SBo: x < Hint: y` (or `>`) greening the higher side, `SBo: x = Hint: y` in
+  yellow when equal, or `SBo: x  (no hint)` when no hint carries a version.
+  Skipped when the `.info` has no VERSION. Header stays pinned; the version row
+  scrolls with the README.
+
+### Fixed
+- Bash completion: `--info`/`-i` now completes package names from the repo
+  (previously fell through to flag completion). Package-name completion for
+  `--new`/`-n` and `-i` no longer relies on a `-maxdepth 2` `.info` scan that
+  matched nothing on the real `category/pkg/pkg.info` layout; it enumerates the
+  `REPO_DIR/*/*/` package dirs with pure param-expansion (no per-dir `basename`
+  fork), cutting completion time from ~7s to ~60ms on a full repo.
+
 ## [1.2.5] - 2026-07-09
 
 ### Added

@@ -1,4 +1,4 @@
-% MKHINT(1) mkhint 1.2.5 | User Commands
+% MKHINT(1) mkhint 1.2.6 | User Commands
 % Danilo M.
 % July 2026
 
@@ -87,11 +87,15 @@ show a diff and prompt **[K]eep / [D]elete / [S]kip**.
 : Delete a hint file and its `.bak`. Accepts multiple names.
 
 **\--info**, **-i** *FILE*
-: Show a package's `category/program` path (green on a TTY), then its
-`README`. Paged with a sticky header (`less --header=1`) only when the
-`README` is taller than the terminal; printed inline when it fits or when
-piped. Missing package exits 2; missing `README` prints `(no README)` and
-exits 0. Mutually exclusive with **-V**, **-f**, **-n**.
+: Show a package's `category/program` path (green on a TTY), then a
+version-compare row, then its `README`. The row compares the SBo `.info`
+version against the hint's: `SBo: x < Hint: y` (or `>`) with the higher side
+green, `SBo: x = Hint: y` in yellow when equal, or `SBo: x  (no hint)` when no
+hint carries a version. Omitted when the `.info` has no version. Paged with a
+sticky header (`less --header=1`) only when the `README` is taller than the
+terminal; printed inline when it fits or when piped. Missing package exits 2;
+missing `README` prints `(no README)` and exits 0. Mutually exclusive with
+**-V**, **-f**, **-n**.
 
 **\--clean**, **-c**
 : Remove all `.bak` files from the hint directory.

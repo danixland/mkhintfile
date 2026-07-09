@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.2.5"
+readonly MKHINT_VERSION="1.2.6"
 
 # Variables
 VERSION=""
@@ -825,20 +825,52 @@ show_info() {
     local dir="${matches[0]%/}"
     local category; category=$(basename "$(dirname "$dir")")
 
-    # Green header on a TTY (same gate as --list).
-    local g_on="" g_off=""
+    # Green header on a TTY (same gate as --list). Yellow for the equal case.
+    local g_on="" g_off="" y_on="" y_off=""
     if [[ -n "$MKHINT_FORCE_COLOR" || -t 1 ]]; then
         if command -v tput &>/dev/null && tput setaf 2 &>/dev/null; then
             g_on=$(tput setaf 2); g_off=$(tput sgr0)
+            y_on=$(tput setaf 3); y_off=$(tput sgr0)
         else
             g_on=$'\033[32m'; g_off=$'\033[0m'
+            y_on=$'\033[33m'; y_off=$'\033[0m'
         fi
     fi
     local header="${g_on}${category}/${pkg}${g_off}"
 
+    # Version-compare row (body line 1, scrolls with README). Skip if the
+    # .info has no VERSION. Reuses _normalize_version + sort -V like --list.
+    local vrow=""
+    local sbo_ver=""
+    [[ -f "${dir}/${pkg}.info" ]] && \
+        sbo_ver=$(grep "^VERSION" "${dir}/${pkg}.info" | cut -d '"' -f2)
+    if [[ -n "$sbo_ver" ]]; then
+        local hint_ver=""
+        [[ -f "${HINT_DIR%/}/${pkg}.hint" ]] && \
+            hint_ver=$(grep "^VERSION" "${HINT_DIR%/}/${pkg}.hint" | cut -d '"' -f2)
+        if [[ -z "$hint_ver" ]]; then
+            vrow="SBo: ${sbo_ver}  (no hint)"
+        else
+            local sn hn
+            sn=$(_normalize_version "$sbo_ver")
+            hn=$(_normalize_version "$hint_ver")
+            if [[ "$sn" == "$hn" ]]; then
+                vrow="${y_on}SBo: ${sbo_ver} = Hint: ${hint_ver}${y_off}"
+            else
+                local newer; newer=$(printf '%s\n%s\n' "$sn" "$hn" | sort -V | tail -1)
+                if [[ "$newer" == "$hn" ]]; then
+                    vrow="SBo: ${sbo_ver} < Hint: ${g_on}${hint_ver}${g_off}"
+                else
+                    vrow="SBo: ${g_on}${sbo_ver}${g_off} > Hint: ${hint_ver}"
+                fi
+            fi
+        fi
+    fi
+
     local readme="${dir}/README"
     if [[ ! -f "$readme" ]]; then
         printf '%s\n' "$header"
+        [[ -n "$vrow" ]] && printf '%s\n' "$vrow"
         echo "(no README)"
         exit 0
     fi
@@ -851,16 +883,18 @@ show_info() {
 
     if [[ ! -t 1 || "$lines" -le "$rows" ]]; then
         printf '%s\n' "$header"
+        [[ -n "$vrow" ]] && printf '%s\n' "$vrow"
         cat "$readme"
         exit 0
     fi
 
-    # Page: header as line 1 so it survives; pin it if pager is less.
+    # Page: header as line 1 so it survives; pin it if pager is less. The
+    # version row is body line 1 so it scrolls with the README.
     local pager="${PAGER:-less}"
     if [[ "$(basename "$pager")" == "less" ]]; then
-        { printf '%s\n' "$header"; cat "$readme"; } | less -R --header=1
+        { printf '%s\n' "$header"; [[ -n "$vrow" ]] && printf '%s\n' "$vrow"; cat "$readme"; } | less -R --header=1
     else
-        { printf '%s\n' "$header"; cat "$readme"; } | $pager
+        { printf '%s\n' "$header"; [[ -n "$vrow" ]] && printf '%s\n' "$vrow"; cat "$readme"; } | $pager
     fi
     exit 0
 }

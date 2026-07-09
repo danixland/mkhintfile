@@ -13,3 +13,4 @@
  - [ ] verify md5 against the manifest `SHA256`: cross-check the downloaded file's sha256 against the manifest entry before writing MD5SUM (integrity check)
  - [ ] config validation command (e.g. `--check-config`): sanity-check nvchecker.toml sections, bundle-manifests URLs, phantom-deps file, and that configured paths exist
  - [ ] batch `--check` summary report at the end: counts of updated / bundled-deps bumped / skipped, instead of only per-package interleaved output
+ - [ ] check if package ships an nvchecker stanza and use that instead in case our functions would simply print the stub when adding the .hint file.

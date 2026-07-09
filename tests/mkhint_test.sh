@@ -2153,6 +2153,63 @@ info4_rc=$?
 set -e
 assert_exit_code "info4 exit 1"     1 "$info4_rc"
 
+# ── T-INFO5: --info version row, hint higher than SBo → '<', hint side green ──
+echo ""
+echo "T-INFO5: --info version row differ, hint newer green"
+printf 'VERSION="9.0.0"\n' > "$MOCK_HINT/curl.hint"
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -i curl 2>&1)
+echo "$out" > "$MOCK_BASE/info5.out"
+assert_contains "info5 SBo ver"     "$MOCK_BASE/info5.out" 'SBo: 8.5.0'
+assert_contains "info5 hint label"  "$MOCK_BASE/info5.out" 'Hint:'
+assert_contains "info5 hint ver"    "$MOCK_BASE/info5.out" '9.0.0'
+assert_contains "info5 lt glyph"    "$MOCK_BASE/info5.out" '<'
+# hint (9.0.0) is higher → green escape precedes 9.0.0
+echo "$out" | grep -qE $'\033\[[0-9;]*m9\.0\.0' \
+    && { echo "  PASS: info5 hint side greened"; (( PASS++ )); } \
+    || { echo "  FAIL: info5 hint side not greened"; (( FAIL++ )) || true; ERRORS+=("T-INFO5 green"); }
+rm -f "$MOCK_HINT/curl.hint"
+
+# ── T-INFO6: --info version row equal → whole row yellow, '=' glyph ────────────
+echo ""
+echo "T-INFO6: --info version row equal, yellow"
+printf 'VERSION="8.5.0"\n' > "$MOCK_HINT/curl.hint"
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -i curl 2>&1)
+echo "$out" > "$MOCK_BASE/info6.out"
+assert_contains "info6 eq glyph"    "$MOCK_BASE/info6.out" '='
+# yellow (tput setaf 3 / \033[33m) wraps the row
+echo "$out" | grep -qE $'\033\[(33|[0-9;]*3)m' \
+    && { echo "  PASS: info6 row yellow"; (( PASS++ )); } \
+    || { echo "  FAIL: info6 row not yellow"; (( FAIL++ )) || true; ERRORS+=("T-INFO6 yellow"); }
+rm -f "$MOCK_HINT/curl.hint"
+
+# ── T-INFO7: --info no hint file → '(no hint)' row ────────────────────────────
+echo ""
+echo "T-INFO7: --info no hint, (no hint) row"
+rm -f "$MOCK_HINT/curl.hint"
+run_mkhint -i curl > "$MOCK_BASE/info7.out" 2>&1
+assert_contains "info7 SBo ver"     "$MOCK_BASE/info7.out" 'SBo: 8.5.0'
+assert_contains "info7 no hint"     "$MOCK_BASE/info7.out" 'no hint'
+
+# ── T-INFO8: --info .info has no VERSION → no version row emitted ──────────────
+echo ""
+echo "T-INFO8: --info no .info VERSION, row skipped"
+# strip curl's VERSION so the .info carries none; header prints, no SBo: row
+printf 'PRGNAM="curl"\n' > "$MOCK_REPO/network/curl/curl.info"
+run_mkhint -i curl > "$MOCK_BASE/info8.out" 2>&1
+assert_not_contains "info8 no SBo row" "$MOCK_BASE/info8.out" 'SBo:'
+# restore for T-INFO9
+printf 'PRGNAM="curl"\nVERSION="8.5.0"\n' > "$MOCK_REPO/network/curl/curl.info"
+
+# ── T-INFO9: --info dashed SBo vs underscore hint, same version → equal yellow ─
+echo ""
+echo "T-INFO9: --info dashed vs underscore treated equal"
+printf 'VERSION="2026-06-02"\n' > "$MOCK_REPO/network/curl/curl.info"
+printf 'VERSION="2026_06_02"\n' > "$MOCK_HINT/curl.hint"
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -i curl 2>&1)
+echo "$out" > "$MOCK_BASE/info9.out"
+assert_contains "info9 eq glyph"    "$MOCK_BASE/info9.out" '='
+rm -f "$MOCK_HINT/curl.hint"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 

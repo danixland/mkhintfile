@@ -31,11 +31,14 @@ _mkhintfile_completions() {
     fi
 
     case "$prev" in
-        --new|-n)
-            local -a words=()
-            while IFS= read -r f; do
-                words+=("$(basename "${f%.info}")")
-            done < <(find "$repo_dir" -mindepth 2 -maxdepth 2 -name "*.info" 2>/dev/null)
+        --new|-n|--info|-i)
+            # Packages live at REPO_DIR/<category>/<pkg>/; complete the pkg dir
+            # names. Strip the trailing slash and category prefix with param
+            # expansion (no per-dir basename fork — the repo has thousands).
+            local -a words=() d
+            for d in "$repo_dir"/*/*/; do
+                d="${d%/}"; words+=("${d##*/}")
+            done
             COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
             ;;
         --hintfile|-f|--delete|-d|--check|-C)
