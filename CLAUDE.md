@@ -151,8 +151,14 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 - `--no-dl` / `-N`: downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` after `MD5SUM_x86_64=`. Works with `--hintfile` or `--new`. Error if used alone.
 - `--fix-current` / `-F`: bulk sweep. Loads `PHANTOM_DEPS_FILE`, scans every `.info` in `REPO_DIR`, and for each package whose REQUIRES contains a phantom dep, ensures its hint carries the matching `DELREQUIRES`. No existing hint → create a minimal `DELREQUIRES="..."` file. Existing hint → back up to `.bak` and union the phantom deps into its `DELREQUIRES` line (dedup), leaving all other content untouched. Idempotent: if the deps are already present, the file is left alone and no `.bak` is written. No per-package prompts, safe under `set -e`. Mutually exclusive with `-V`/`-f`/`-n` (exit 1). Empty/missing list → "Nothing to do", exit 0. Helpers: `load_phantom_deps`, `phantom_deps_in_info`, `merge_delrequires`, `fix_current`.
 - `--new` phantom-dep hook: after commenting out REQUIRES, `create_new_hint_file` appends `DELREQUIRES="..."` for any phantom dep found in the `.info` REQUIRES. Same list as `--fix-current`.
-- `--check` bundled-dep reconcile: for packages listed in `BUNDLE_MANIFEST_FILE`
-  (`<pkg> <url-template-with-{VERSION}>`), after the primary bump mkhint fetches
+- `--check` bundled-dep reconcile: `BUNDLE_MANIFEST_FILE` entries are 3-field,
+  `<pkg> <mode> <rest>` (field 2 = `url` or `sha`; `bundle_mode <pkg>` reads it,
+  the dispatcher `reconcile_bundle_deps` routes on it). `pkg_has_manifest` is true
+  for either mode; `manifest_url_for` returns non-zero for non-`url` packages, so
+  each of the three reconcile call sites (`--new`, `--check`, `--hintfile`)
+  resolves `murl` only when `bundle_mode == url` and passes empty for `sha`.
+- **url mode** (neovim, `<pkg> url <url-template-with-{VERSION}>`,
+  `reconcile_bundle_deps_url`): after the primary bump mkhint fetches
   the upstream deps manifest (`NAME_URL`/`NAME_SHA256` pairs, e.g. neovim's
   `cmake.deps/deps.txt`), matches each extra `DOWNLOAD` line via
   `match_dep_url` (repo-path first, exact basename-stem fallback for blob
@@ -174,7 +180,32 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
   with no hint line are listed as an FYI, never added (would need a SlackBuild
   change). Helpers: `load_bundle_manifests`, `manifest_url_for`,
   `fetch_manifest`, `parse_manifest`, `match_dep_url`, `_url_version`,
-  `reconcile_bundle_deps`.
+  `reconcile_bundle_deps_url`.
+- **sha mode** (openvino, `<pkg> sha <repo> <version-template> <name=path>...`,
+  `reconcile_bundle_deps_sha`): the bundled deps are github git submodules pinned
+  by full 40-char commit SHA in `archive/<sha>/` `DOWNLOAD_x86_64` lines (there is
+  no upstream flat `deps.txt`, and some pins sit off-tag, so versions can't be
+  derived — the SHA is the identity). For each manifest `name=path`, mkhint fetches
+  the submodule's pinned SHA from the GitHub contents API
+  (`_fetch_submodule_sha` → `.sha` + `submodule_git_url`, authed with a token from
+  nvchecker's keyfile via `_github_token` when present → 5000/h, else anon),
+  matches the hint `DOWNLOAD` line by that submodule's owner/repo, and rewrites +
+  re-md5s any line whose 40-char SHA drifted (plain `==`, both path segment and
+  filename). The report lists every dep, `<name> <sha7> (current)` or
+  `<name> <old7> -> <new7>`; a 404 path → `submodule path not found`, a manifest
+  dep matching no hint line → `no matching DOWNLOAD line (FYI)`. Runs on a primary
+  bump or under `--force`, same as url mode. `--new`/`--hintfile` print the report
+  too. The primary tarball line is never touched (no `name=path` names it).
+- **Job B submodule inventory** (`detect_set_drift <pkg> <old> <new>`): on a
+  sha-mode bump or `--force`, diffs `.gitmodules` at the old and new refs
+  (`_fetch_gitmodules_paths`, plain `raw.githubusercontent.com`, no token needed)
+  and prints a full roster of every submodule (all ~20, not just the diff) tagged
+  `bundled`/`(ignored)` with `+`/`-` change glyphs, raising `ACTION` on a bundled
+  dep removed upstream and `review` on a new unbundled one. FYI only, never edits
+  the bundle set (add/remove a bundled dep is a SlackBuild + `.info` change the
+  user owns). The pre-bump version is captured in `check_updates` before the hint
+  is rewritten; under `--force` no-bump old==new and the roster prints with blank
+  glyphs. A `.gitmodules` fetch failure skips Job B with a notice; Job A still runs.
 - `--delete` / `-d`: removes hint file and `.bak` if present. Accepts multiple package names. Exits 2 on first missing file.
 - `--info` / `-i <pkg>`: globs `REPO_DIR/*/pkg/` for the category, prints the green `category/program` header, then a version-compare row, then the README, paged with sticky header (`less --header=1`) only when the README is taller than the terminal (inline when it fits or when piped), missing package exits 2, missing README prints `(no README)` and exits 0. Mutually exclusive with `-V`/`-f`/`-n`. Handler `show_info`. The version row compares the SBo `.info` VERSION against the hint's (both via `grep "^VERSION" | cut -d '"' -f2` from `<dir>/<pkg>.info` and `HINT_DIR/<pkg>.hint`), normalized with `_normalize_version`: equal → whole row yellow with `=`; differ → `sort -V` greens the higher side with `<`/`>` pointing at it; hint absent/versionless → `SBo: x  (no hint)`; `.info` without VERSION → row skipped. Header stays pinned (`--header=1`); the version row is body line 1 and scrolls with the README.
 - Downloads go to `/tmp/mkhint/download` (single shared temp file, deleted after md5 calculation).
