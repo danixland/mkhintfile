@@ -596,8 +596,84 @@ reconcile_bundle_deps() {
     esac
 }
 
-# TEMPORARY stub for sha-mode; real body arrives in a later task.
-reconcile_bundle_deps_sha() { echo "  $1: sha-mode not yet implemented"; return 0; }
+# reconcile_bundle_deps_sha <pkg> <hintfile> <ignored> <mode>
+# mode = report | apply. Compares each manifest name=path submodule's upstream
+# SHA (contents API) against the matching hint DOWNLOAD line's sha, rewrites +
+# re-md5s drifted lines. Reports all deps ((current) for unchanged). Returns 2 in
+# report mode when there are changes to apply, else 0. apply mode returns 0.
+reconcile_bundle_deps_sha() {
+    local pkg="$1" hint="$2" _ignored="$3" mode="$4"
+    local rest="${BUNDLE_REST[$pkg]}"
+    local repo ver_tmpl
+    read -r repo ver_tmpl rest <<< "$rest"
+    local cur_ver; cur_ver=$(grep '^VERSION=' "$hint" | sed 's/VERSION="//;s/"$//')
+    local ref="${ver_tmpl//\{VERSION\}/$cur_ver}"
+
+    local -a urls md5s
+    mapfile -t urls < <(parse_multiline_var "DOWNLOAD_x86_64" "$hint")
+    (( ${#urls[@]} == 0 )) && mapfile -t urls < <(parse_multiline_var "DOWNLOAD" "$hint")
+    mapfile -t md5s < <(parse_multiline_var "MD5SUM_x86_64" "$hint")
+    (( ${#md5s[@]} == 0 )) && mapfile -t md5s < <(parse_multiline_var "MD5SUM" "$hint")
+
+    local -a new_urls=("${urls[@]}")
+    local -a changed_idx=()
+    local -a report_lines=()
+    local pair name path upstream_sha subrepo i
+    for pair in $rest; do
+        name="${pair%%=*}"; path="${pair#*=}"
+        local resp; resp=$(_fetch_submodule_sha "$repo" "$path" "$ref") || {
+            report_lines+=("  $name: submodule path not found at $ref"); continue; }
+        upstream_sha="${resp%%$'\t'*}"; subrepo="${resp#*$'\t'}"
+        local found=-1 hrepo
+        for (( i=0; i<${#urls[@]}; i++ )); do
+            hrepo=$(_url_repo "${urls[$i]}")
+            [[ "$hrepo" == "$subrepo" ]] && { found=$i; break; }
+        done
+        if (( found < 0 )); then
+            report_lines+=("  $name: no matching DOWNLOAD line (FYI)"); continue
+        fi
+        local cur_sha=""
+        [[ "${urls[$found]}" =~ /archive/([0-9a-f]{40}) ]] && cur_sha="${BASH_REMATCH[1]}"
+        if [[ "$cur_sha" == "$upstream_sha" ]]; then
+            report_lines+=("  $name $(printf %.7s "$cur_sha") (current)")
+        else
+            new_urls[$found]="${urls[$found]//$cur_sha/$upstream_sha}"
+            changed_idx+=("$found")
+            report_lines+=("  $name $(printf %.7s "$cur_sha") -> $(printf %.7s "$upstream_sha")")
+        fi
+    done
+
+    if [[ "$mode" == report ]]; then
+        echo ""
+        echo "$pkg bundled deps (sha):"
+        printf '%s\n' "${report_lines[@]}"
+        (( ${#changed_idx[@]} > 0 )) && return 2
+        return 0
+    fi
+
+    (( ${#changed_idx[@]} == 0 )) && return 0
+    cp "$hint" "${hint}.bak"
+    local -a new_md5s=("${md5s[@]}")
+    local idx md5
+    for idx in "${changed_idx[@]}"; do
+        echo "Downloading (bundled): ${new_urls[$idx]}"
+        if md5=$(download_file "${new_urls[$idx]}"); then
+            new_md5s[$idx]="$md5"
+        else
+            echo "  download failed for ${new_urls[$idx]} — left as-is"
+            new_urls[$idx]="${urls[$idx]}"
+        fi
+    done
+    local var_dl var_md5
+    if grep -q '^DOWNLOAD_x86_64=' "$hint"; then var_dl="DOWNLOAD_x86_64"; var_md5="MD5SUM_x86_64"
+    else var_dl="DOWNLOAD"; var_md5="MD5SUM"; fi
+    local new_dl new_md5v
+    new_dl=$(build_multiline_value new_urls);  new_dl="${new_dl#\"}";  new_dl="${new_dl%\"}"
+    new_md5v=$(build_multiline_value new_md5s); new_md5v="${new_md5v#\"}"; new_md5v="${new_md5v%\"}"
+    perl -i -0pe 'BEGIN{$var=shift;$v=shift} s|^\Q$var\E="[^"]*(?:\\\n[^"]*)*"|$var."=\"".$v."\""|me' "$var_dl" "$new_dl" "$hint"
+    perl -i -0pe 'BEGIN{$var=shift;$v=shift} s|^\Q$var\E="[^"]*(?:\\\n[^"]*)*"|$var."=\"".$v."\""|me' "$var_md5" "$new_md5v" "$hint"
+    return 0
+}
 
 # _github_token — echo a GitHub token from nvchecker's keyfile, or nothing.
 # nvchecker.toml has `keyfile = "<path>"`; that file has `github = "<token>"`.

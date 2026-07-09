@@ -286,6 +286,19 @@ run_mkhint_fn() {
     ' _ "$@"
 }
 
+# run_sha_reconcile <pkg> <hint> <ignored> <mode> — source the patched mkhint,
+# load the bundle manifests (so BUNDLE_REST/BUNDLE_MODE are populated), then call
+# reconcile_bundle_deps_sha directly. Mirrors run_mkhint_fn but adds the manifest
+# load the sha reconcile depends on.
+run_sha_reconcile() {
+    patch_mkhint
+    MKHINT_NOMAIN=1 bash -c '
+        source "'"$PATCHED_MKHINT"'"
+        load_bundle_manifests
+        reconcile_bundle_deps_sha "$@"
+    ' _ "$@"
+}
+
 # Mock wget — writes fake content, md5 will be deterministic. URLs containing
 # deps.txt instead serve a manifest fixture ($MOCK_BASE/manifest_fixture) if
 # present, so bundled-dep manifest tests can control fetch_manifest's input.
@@ -309,7 +322,11 @@ elif [[ "\$url" == *deps.txt* ]]; then
     exit 1   # simulate manifest fetch failure when no fixture set
 elif [[ "\$url" == *api.github.com*contents* ]]; then
     echo "wget-args: \$all_args" >> "$MOCK_BASE/api.log"
-    if [[ -f "$MOCK_BASE/api_fixture" ]]; then
+    p="\${url#*/contents/}"; p="\${p%%\\?*}"
+    key="\$(basename "\$p")"
+    if [[ -f "$MOCK_BASE/api_\$key.json" ]]; then
+        cat "$MOCK_BASE/api_\$key.json" > "\$out"
+    elif [[ -f "$MOCK_BASE/api_fixture" ]]; then
         cat "$MOCK_BASE/api_fixture" > "\$out"
     else
         exit 1
@@ -2285,6 +2302,107 @@ assert_contains "sha returned"    <(echo "$res") "d1bc25ec4660cddd87804fcf03b241
 assert_contains "subrepo lc"      <(echo "$res") "openvinotoolkit/mlas"
 assert_contains "auth header sent" "$MOCK_BASE/api.log" "Authorization: Bearer FAKE_TEST_TOKEN_123"
 rm -f "$MOCK_BASE/api_fixture"
+
+# ── T-SHA1/2: sha-mode reconcile — drift rewritten, current left alone ─────────
+# openvino has two submodule deps: mlas (moved upstream) and onnx (unchanged).
+emit_openvino_fixtures() {
+    cat > "$MOCK_HINT/openvino.hint" << 'EOF'
+VERSION="2024.4.1"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+DOWNLOAD_x86_64="https://github.com/openvinotoolkit/openvino/archive/2024.4.1/openvino-2024.4.1.tar.gz \
+          https://github.com/openvinotoolkit/mlas/archive/d1bc25ec4660cddd87804fcf03b2411b5dfb2e94/mlas-d1bc25ec4660cddd87804fcf03b2411b5dfb2e94.tar.gz \
+          https://github.com/onnx/onnx/archive/990217f043af7222348ca8f0301e17fa7b841781/onnx-990217f043af7222348ca8f0301e17fa7b841781.tar.gz"
+MD5SUM_x86_64="aaa \
+        bbb \
+        ccc"
+EOF
+    cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+openvino sha github:openvinotoolkit/openvino {VERSION} mlas=src/plugins/intel_cpu/thirdparty/mlas onnx=thirdparty/onnx/onnx
+EOF
+    cat > "$MOCK_BASE/api_mlas.json" << 'EOF'
+{"type":"submodule","sha":"a3f9c0177b21ffffffffffffffffffffffffffff","submodule_git_url":"https://github.com/openvinotoolkit/mlas.git"}
+EOF
+    cat > "$MOCK_BASE/api_onnx.json" << 'EOF'
+{"type":"submodule","sha":"990217f043af7222348ca8f0301e17fa7b841781","submodule_git_url":"https://github.com/onnx/onnx.git"}
+EOF
+}
+echo ""
+echo "T-SHA1/2: sha-mode reconcile — drift rewritten (mlas), current left (onnx)"
+emit_openvino_fixtures
+run_sha_reconcile openvino "$MOCK_HINT/openvino.hint" "" apply > "$MOCK_BASE/sha1.out" 2>&1 || true
+assert_contains "hint: mlas sha rewritten (path)" "$MOCK_HINT/openvino.hint" "mlas/archive/a3f9c0177b21"
+assert_contains "hint: mlas sha rewritten (file)" "$MOCK_HINT/openvino.hint" "mlas-a3f9c0177b21"
+assert_contains "hint: onnx sha unchanged"        "$MOCK_HINT/openvino.hint" "onnx-990217f043af"
+# report mode shows old->new and (current)
+emit_openvino_fixtures
+out=$(run_sha_reconcile openvino "$MOCK_HINT/openvino.hint" "" report 2>&1) || true
+assert_contains "report mlas old->new" <(echo "$out") "d1bc25e -> a3f9c01"
+assert_contains "report onnx current"  <(echo "$out") "(current)"
+
+# ── T-SHA3: 404 on one submodule path is reported and skipped ──────────────────
+echo ""
+echo "T-SHA3: submodule path 404 — reported skipped, other dep still processed"
+emit_openvino_fixtures
+rm -f "$MOCK_BASE/api_mlas.json"   # mlas now 404s (no per-path fixture, no fallback)
+rm -f "$MOCK_BASE/api_fixture"
+out=$(run_sha_reconcile openvino "$MOCK_HINT/openvino.hint" "" report 2>&1) || true
+assert_contains "report mlas not found" <(echo "$out") "mlas: submodule path not found"
+assert_contains "report onnx still current" <(echo "$out") "(current)"
+emit_openvino_fixtures   # restore
+
+# ── T-SHA5: two submodule paths sharing distinct basenames — no cross-contam ───
+echo ""
+echo "T-SHA5: two same-name-different-owner deps take their own path's sha"
+cat > "$MOCK_HINT/openvino.hint" << 'EOF'
+VERSION="2024.4.1"
+ARCH="x86_64"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+DOWNLOAD_x86_64="https://github.com/openvinotoolkit/openvino/archive/2024.4.1/openvino-2024.4.1.tar.gz \
+          https://github.com/openvinotoolkit/oneDNN/archive/1111111111111111111111111111111111111111/oneDNN-1111111111111111111111111111111111111111.tar.gz \
+          https://github.com/oneapi-src/oneDNN/archive/2222222222222222222222222222222222222222/oneDNN-2222222222222222222222222222222222222222.tar.gz"
+MD5SUM_x86_64="aaa \
+        bbb \
+        ccc"
+EOF
+cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+openvino sha github:openvinotoolkit/openvino {VERSION} onednn=src/plugins/intel_cpu/thirdparty/onednn onednn_gpu=src/plugins/intel_gpu/thirdparty/onednn_gpu
+EOF
+cat > "$MOCK_BASE/api_onednn.json" << 'EOF'
+{"type":"submodule","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","submodule_git_url":"https://github.com/openvinotoolkit/oneDNN.git"}
+EOF
+cat > "$MOCK_BASE/api_onednn_gpu.json" << 'EOF'
+{"type":"submodule","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","submodule_git_url":"https://github.com/oneapi-src/oneDNN.git"}
+EOF
+run_sha_reconcile openvino "$MOCK_HINT/openvino.hint" "" apply > /dev/null 2>&1 || true
+# openvinotoolkit/oneDNN line must carry onednn path's sha (aaaa...)
+grep -q "openvinotoolkit/oneDNN/archive/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$MOCK_HINT/openvino.hint" \
+    && grep -q "oneapi-src/oneDNN/archive/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$MOCK_HINT/openvino.hint" \
+    && { echo "  PASS: each dep took its own path's sha"; (( PASS++ )); } \
+    || { echo "  FAIL: cross-contamination"; cat "$MOCK_HINT/openvino.hint"; (( FAIL++ )) || true; ERRORS+=("T-SHA5"); }
+rm -f "$MOCK_BASE/api_onednn.json" "$MOCK_BASE/api_onednn_gpu.json"
+
+# ── T-SHA7: manifest dep matching no DOWNLOAD line — FYI, hint unchanged ────────
+echo ""
+echo "T-SHA7: manifest dep with no matching hint line — FYI, no line added"
+emit_openvino_fixtures
+cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+openvino sha github:openvinotoolkit/openvino {VERSION} mlas=src/plugins/intel_cpu/thirdparty/mlas onnx=thirdparty/onnx/onnx foo=some/path/foo
+EOF
+cat > "$MOCK_BASE/api_foo.json" << 'EOF'
+{"type":"submodule","sha":"cccccccccccccccccccccccccccccccccccccccc","submodule_git_url":"https://github.com/nobody/foo.git"}
+EOF
+before=$(grep -c 'archive/' "$MOCK_HINT/openvino.hint")
+out=$(run_sha_reconcile openvino "$MOCK_HINT/openvino.hint" "" report 2>&1) || true
+after=$(grep -c 'archive/' "$MOCK_HINT/openvino.hint")
+assert_contains "report foo no matching line" <(echo "$out") "foo: no matching DOWNLOAD line"
+[[ "$before" == "$after" ]] \
+    && { echo "  PASS: hint DOWNLOAD line count unchanged"; (( PASS++ )); } \
+    || { echo "  FAIL: line count changed $before -> $after"; (( FAIL++ )) || true; ERRORS+=("T-SHA7 count"); }
+rm -f "$MOCK_BASE/api_foo.json" "$MOCK_HINT/openvino.hint"
+# T-SHA4 (--new prints reconcile report) deferred: needs --new wiring (later task).
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
