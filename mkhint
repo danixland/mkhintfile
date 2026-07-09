@@ -796,6 +796,74 @@ EOF
     fi
 }
 
+# --info/-i: show a package's category/program path (green on a TTY) then its
+# README, paged only when it doesn't fit the terminal.
+show_info() {
+    local pkg="$1"
+    if [[ -z "$pkg" ]]; then
+        echo "Error: --info requires a package name" >&2
+        exit 1
+    fi
+
+    # Find the category dir(s): REPO_DIR/*/pkg/
+    local -a matches=()
+    local d
+    for d in "${REPO_DIR%/}"/*/"$pkg"/; do
+        [[ -d "$d" ]] && matches+=("$d")
+    done
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        echo "Error: package not found in ${REPO_DIR%/}: $pkg" >&2
+        exit 2
+    fi
+    if [[ ${#matches[@]} -gt 1 ]]; then
+        echo "Error: multiple matches for $pkg in ${REPO_DIR%/}:" >&2
+        printf '  %s\n' "${matches[@]}" >&2
+        exit 2
+    fi
+
+    local dir="${matches[0]%/}"
+    local category; category=$(basename "$(dirname "$dir")")
+
+    # Green header on a TTY (same gate as --list).
+    local g_on="" g_off=""
+    if [[ -n "$MKHINT_FORCE_COLOR" || -t 1 ]]; then
+        if command -v tput &>/dev/null && tput setaf 2 &>/dev/null; then
+            g_on=$(tput setaf 2); g_off=$(tput sgr0)
+        else
+            g_on=$'\033[32m'; g_off=$'\033[0m'
+        fi
+    fi
+    local header="${g_on}${category}/${pkg}${g_off}"
+
+    local readme="${dir}/README"
+    if [[ ! -f "$readme" ]]; then
+        printf '%s\n' "$header"
+        echo "(no README)"
+        exit 0
+    fi
+
+    # Non-TTY, or README fits: print inline. Else page with header pinned.
+    local rows; rows="${LINES:-}"
+    [[ -z "$rows" ]] && command -v tput &>/dev/null && rows=$(tput lines 2>/dev/null)
+    [[ -z "$rows" ]] && rows=24
+    local lines; lines=$(wc -l < "$readme")
+
+    if [[ ! -t 1 || "$lines" -le "$rows" ]]; then
+        printf '%s\n' "$header"
+        cat "$readme"
+        exit 0
+    fi
+
+    # Page: header as line 1 so it survives; pin it if pager is less.
+    local pager="${PAGER:-less}"
+    if [[ "$(basename "$pager")" == "less" ]]; then
+        { printf '%s\n' "$header"; cat "$readme"; } | less -R --header=1
+    else
+        { printf '%s\n' "$header"; cat "$readme"; } | $pager
+    fi
+    exit 0
+}
+
 # Emit the TOML section label for a package: bare if the name is a valid
 # bare key ([A-Za-z0-9_] only), otherwise double-quoted. nvchecker (and TOML)
 # require quoting for names containing '.', '-', etc.
@@ -1468,8 +1536,8 @@ check_updates() {
 # Main function
 main() {
     local parsed
-    parsed=$(getopt -o vV:f:n:lcCdNhRF \
-        --long version,set-version:,hintfile:,new:,list,clean,check,delete,no-dl,help,review,fix-current,force \
+    parsed=$(getopt -o vV:f:n:i:lcCdNhRF \
+        --long version,set-version:,hintfile:,new:,info:,list,clean,check,delete,no-dl,help,review,fix-current,force \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
@@ -1634,6 +1702,9 @@ main() {
             ;;
         fix-current)
             fix_current
+            ;;
+        info)
+            show_info "$INFO_PKG"
             ;;
         update)
             check_wget

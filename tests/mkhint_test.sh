@@ -2108,6 +2108,48 @@ assert_not_contains "no alpha"     "$ex_out" 'alpha'
 assert_not_contains "no gamma"     "$ex_out" 'gamma'
 NVCHECKER_CONFIG="$MOCK_BASE/nvchecker.toml"
 
+# README fixture for --info tests (curl dir already exists in setup)
+cat > "$MOCK_REPO/network/curl/README" << 'EOF'
+curl is a tool to transfer data from or to a server.
+It supports many protocols.
+EOF
+
+# ── T-INFO1: --info existing pkg with README → header + README (non-TTY) ───────
+echo ""
+echo "T-INFO1: --info prints category/pkg header + README"
+run_mkhint -i curl > "$MOCK_BASE/info1.out" 2>&1
+assert_contains "info header path"  "$MOCK_BASE/info1.out" 'network/curl'
+assert_contains "info README body"  "$MOCK_BASE/info1.out" 'transfer data from or to a server'
+
+# ── T-INFO2: --info pkg without README → header + (no README) ──────────────────
+echo ""
+echo "T-INFO2: --info pkg with no README notes it"
+# clion dir exists, no README written
+run_mkhint -i clion > "$MOCK_BASE/info2.out" 2>&1
+info2_rc=$?
+assert_contains "info2 header"      "$MOCK_BASE/info2.out" 'development/clion'
+assert_contains "info2 no README"   "$MOCK_BASE/info2.out" 'no README'
+assert_exit_code "info2 exit 0"     0 "$info2_rc"
+
+# ── T-INFO3: --info missing pkg → exit 2 ──────────────────────────────────────
+echo ""
+echo "T-INFO3: --info missing pkg exits 2"
+set +e
+run_mkhint -i doesnotexist > "$MOCK_BASE/info3.out" 2>&1
+info3_rc=$?
+set -e
+assert_exit_code "info3 exit 2"     2 "$info3_rc"
+assert_contains "info3 error msg"   "$MOCK_BASE/info3.out" 'not found'
+
+# ── T-INFO4: --info combined with -V → mutually exclusive, exit 1 ──────────────
+echo ""
+echo "T-INFO4: --info + -V mutually exclusive"
+set +e
+run_mkhint -i curl -V 9.9.9 > "$MOCK_BASE/info4.out" 2>&1
+info4_rc=$?
+set -e
+assert_exit_code "info4 exit 1"     1 "$info4_rc"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
