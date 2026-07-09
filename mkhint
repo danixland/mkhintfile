@@ -843,6 +843,71 @@ _registry_name_from_url() {
     printf '%s' "$fallback"
 }
 
+# Detect an nvchecker source from a package's DOWNLOAD/HOMEPAGE haystack.
+# Args: <haystack> <prgnam>. Prints the TOML body (no [label] header). Empty
+# output means "unrecognised", the caller emits the commented stub.
+_detect_nvchecker_source() {
+    local haystack="$1" pkg="$2"
+
+    # ── owner/repo forges ─────────────────────────────────────────────────
+    if [[ "$haystack" =~ (github\.com|gitlab\.com|bitbucket\.org|gitea\.com|codeberg\.org|pagure\.io)/([A-Za-z0-9._-]+)(/([A-Za-z0-9._-]+))? ]]; then
+        local host="${BASH_REMATCH[1]}"
+        local owner="${BASH_REMATCH[2]}"
+        local repo="${BASH_REMATCH[4]}"
+        repo="${repo%.git}"; owner="${owner%.git}"
+        case "$host" in
+            github.com)
+                printf 'source = "github"\ngithub = "%s/%s"\nuse_latest_release = true\n# use_max_tag = true  # if the repo publishes no Releases\n# prefix = "v"  # uncomment if tags are v-prefixed\n' "$owner" "$repo"
+                return 0 ;;
+            gitlab.com)
+                printf 'source = "gitlab"\ngitlab = "%s/%s"\nuse_max_tag = true\n# prefix = "v"  # uncomment if tags are v-prefixed\n' "$owner" "$repo"
+                return 0 ;;
+            bitbucket.org)
+                printf 'source = "bitbucket"\nbitbucket = "%s/%s"\nuse_max_tag = true\n# prefix = "v"  # uncomment if tags are v-prefixed\n' "$owner" "$repo"
+                return 0 ;;
+            gitea.com)
+                printf 'source = "gitea"\ngitea = "%s/%s"\nuse_max_tag = true\n# prefix = "v"  # uncomment if tags are v-prefixed\n' "$owner" "$repo"
+                return 0 ;;
+            codeberg.org)
+                printf 'source = "gitea"\ngitea = "%s/%s"\nhost = "codeberg.org"\nuse_max_tag = true\n# prefix = "v"  # uncomment if tags are v-prefixed\n' "$owner" "$repo"
+                return 0 ;;
+            pagure.io)
+                # pagure field is the repo only, on pagure.io the first path
+                # segment IS the repo (no owner), so it lands in $owner.
+                printf 'source = "pagure"\npagure = "%s"\nuse_max_tag = true\n# prefix = "v"  # uncomment if tags are v-prefixed\n' "$owner"
+                return 0 ;;
+        esac
+    fi
+
+    # ── language registries ───────────────────────────────────────────────
+    local url; url=$(printf '%s' "$haystack" | grep -oE 'https?://[^ ]+' | head -1)
+    local name
+    case "$haystack" in
+        *pypi.org*|*files.pythonhosted.org*)
+            printf 'source = "pypi"\npypi = "%s"\n' "$pkg"; return 0 ;;
+        *registry.npmjs.org*|*npmjs.com*)
+            name=$(_registry_name_from_url "$url" "$pkg")
+            printf 'source = "npm"\nnpm = "%s"\n' "$name"; return 0 ;;
+        *rubygems.org*)
+            name=$(_registry_name_from_url "$url" "$pkg")
+            printf 'source = "gems"\ngems = "%s"\n' "$name"; return 0 ;;
+        *crates.io*)
+            name=$(_registry_name_from_url "$url" "$pkg")
+            printf 'source = "cratesio"\ncratesio = "%s"\n' "$name"; return 0 ;;
+        *metacpan.org*|*cpan.org*)
+            printf 'source = "cpan"\ncpan = "%s"\n' "$pkg"; return 0 ;;
+        *hackage.haskell.org*)
+            name=$(_registry_name_from_url "$url" "$pkg")
+            printf 'source = "hackage"\nhackage = "%s"\n' "$name"; return 0 ;;
+        *packagist.org*)
+            printf 'source = "packagist"\npackagist = "%s"\n' "$pkg"; return 0 ;;
+        *cran.r-project.org*)
+            printf 'source = "cran"\ncran = "%s"\n' "$pkg"; return 0 ;;
+    esac
+
+    return 0   # empty output → caller stubs
+}
+
 # Append an nvchecker [pkg] section to NVCHECKER_CONFIG, auto-detecting the
 # source from the package's .info DOWNLOAD/HOMEPAGE. No-op if section exists.
 add_nvchecker_section() {

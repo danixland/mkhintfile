@@ -1974,6 +1974,47 @@ assert_contains "gems name parsed"     "$nv_out" '^gems rails$'
 assert_contains "npm name parsed"      "$nv_out" '^npm left-pad$'
 assert_contains "fallback to PRGNAM"   "$nv_out" '^fallback mypkg$'
 
+# ── T-NV2: _detect_nvchecker_source per host ──────────────────────────────────
+echo ""
+echo "T-NV2: _detect_nvchecker_source emits correct body per host"
+d_out="$MOCK_BASE/nv_detect.txt"
+: > "$d_out"
+echo "### github" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://github.com/o/r/archive/v1.tar.gz" r >> "$d_out"
+echo "### gitlab" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://gitlab.com/o/r/-/archive/1/r-1.tar.gz" r >> "$d_out"
+echo "### bitbucket" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://bitbucket.org/o/r/get/1.tar.gz" r >> "$d_out"
+echo "### gitea" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://gitea.com/o/r/archive/1.tar.gz" r >> "$d_out"
+echo "### codeberg" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://codeberg.org/o/r/archive/1.tar.gz" r >> "$d_out"
+echo "### pagure" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://pagure.io/r/archive/1/r-1.tar.gz" r >> "$d_out"
+echo "### npm" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://registry.npmjs.org/lp/-/lp-1.tgz" lp >> "$d_out"
+echo "### cran" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://cran.r-project.org/src/contrib/foo_1.tar.gz" foo >> "$d_out"
+echo "### unknown" >> "$d_out"
+_detect_nvchecker_source "DOWNLOAD=https://example.com/x.tar.gz" x >> "$d_out"
+echo "### end" >> "$d_out"
+
+assert_contains "github source"        "$d_out" 'source = "github"'
+assert_contains "github latest_release" "$d_out" 'use_latest_release = true'
+assert_contains "github max_tag comment" "$d_out" '# use_max_tag = true'
+assert_contains "github prefix comment"  "$d_out" '# prefix = "v"'
+assert_contains "gitlab source"        "$d_out" 'source = "gitlab"'
+assert_contains "gitlab field"         "$d_out" 'gitlab = "o/r"'
+assert_contains "bitbucket field"      "$d_out" 'bitbucket = "o/r"'
+assert_contains "gitea field"          "$d_out" 'gitea = "o/r"'
+assert_contains "codeberg host"        "$d_out" 'host = "codeberg.org"'
+assert_contains "pagure field"         "$d_out" 'pagure = "r"'
+assert_contains "npm field"            "$d_out" 'npm = "lp"'
+assert_contains "cran field"           "$d_out" 'cran = "foo"'
+# unknown host → empty body between ### unknown and ### end
+unk=$(awk '/^### unknown/{f=1;next} /^### end/{f=0} f' "$d_out")
+assert_exit_code "unknown host empty body" 0 "$( [[ -z "${unk//[[:space:]]/}" ]]; echo $? )"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
