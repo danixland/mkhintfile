@@ -817,6 +817,19 @@ _has_nvchecker_section() {
         "$NVCHECKER_CONFIG"
 }
 
+# Print the [pkg] section (header + body) from NVCHECKER_CONFIG: from the label
+# line until the next line starting with '[' or EOF. Empty if not found.
+_extract_nvchecker_section() {
+    local pkg="$1"
+    [[ -f "$NVCHECKER_CONFIG" ]] || return 0
+    local label; label=$(_nvchecker_label "$pkg")
+    awk -v lbl="$label" '
+        $0==lbl { grab=1; print; next }
+        grab && /^\[/ { exit }
+        grab { print }
+    ' "$NVCHECKER_CONFIG"
+}
+
 # Extract a package name from a language-registry download URL.
 # Args: <url> <prgnam-fallback>. Prints the parsed name, or the fallback
 # (PRGNAM) when no host-specific pattern matches.

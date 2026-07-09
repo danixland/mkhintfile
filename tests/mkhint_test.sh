@@ -2015,6 +2015,31 @@ assert_contains "cran field"           "$d_out" 'cran = "foo"'
 unk=$(awk '/^### unknown/{f=1;next} /^### end/{f=0} f' "$d_out")
 assert_exit_code "unknown host empty body" 0 "$( [[ -z "${unk//[[:space:]]/}" ]]; echo $? )"
 
+# ── T-NV3: _extract_nvchecker_section prints one section ──────────────────────
+echo ""
+echo "T-NV3: _extract_nvchecker_section returns the [pkg] block only"
+NVCHECKER_CONFIG="$MOCK_BASE/nv_extract.toml"
+cat > "$NVCHECKER_CONFIG" << 'EOF'
+[alpha]
+source = "github"
+github = "a/alpha"
+
+[beta]
+source = "pypi"
+pypi = "beta"
+
+[gamma]
+source = "cran"
+cran = "gamma"
+EOF
+ex_out="$MOCK_BASE/nv_extract.txt"
+_extract_nvchecker_section beta > "$ex_out"
+assert_contains "beta header"      "$ex_out" '^\[beta\]$'
+assert_contains "beta field"       "$ex_out" 'pypi = "beta"'
+assert_not_contains "no alpha"     "$ex_out" 'alpha'
+assert_not_contains "no gamma"     "$ex_out" 'gamma'
+NVCHECKER_CONFIG="$MOCK_BASE/nvchecker.toml"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
