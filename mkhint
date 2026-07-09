@@ -933,9 +933,12 @@ add_nvchecker_section() {
 
     local label; label=$(_nvchecker_label "$pkg")
 
-    # Skip if section already present
+    # Already present: dump the existing section so the user sees what's set.
     if _has_nvchecker_section "$pkg"; then
-        echo "nvchecker: ${label} already present in $NVCHECKER_CONFIG"
+        echo "nvchecker: ${label} already present in $NVCHECKER_CONFIG:"
+        echo "────────────────────────────"
+        _extract_nvchecker_section "$pkg"
+        echo "────────────────────────────"
         return 0
     fi
 
@@ -946,27 +949,10 @@ add_nvchecker_section() {
     fi
     local haystack="${download} ${homepage}"
 
-    local section=""
-    if [[ "$haystack" =~ github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+) ]]; then
-        local owner="${BASH_REMATCH[1]}"
-        local repo="${BASH_REMATCH[2]}"
-        repo="${repo%.git}"
-        section=$(cat <<EOF
-
-${label}
-source = "github"
-github = "${owner}/${repo}"
-use_max_tag = true
-EOF
-)
-    elif [[ "$haystack" =~ (pypi\.org|files\.pythonhosted\.org) ]]; then
-        section=$(cat <<EOF
-
-${label}
-source = "pypi"
-pypi = "${pkg}"
-EOF
-)
+    local body; body=$(_detect_nvchecker_source "$haystack" "$pkg")
+    local section
+    if [[ -n "$body" ]]; then
+        section=$(printf '\n%s\n%s' "$label" "$body")
     else
         section=$(cat <<EOF
 
@@ -981,7 +967,15 @@ EOF
     fi
 
     printf '%s\n' "$section" >> "$NVCHECKER_CONFIG"
-    echo "nvchecker: review/fill ${label} section in $NVCHECKER_CONFIG"
+    echo "nvchecker: added ${label} section to $NVCHECKER_CONFIG:"
+    echo "────────────────────────────"
+    printf '%s\n' "$label"
+    if [[ -n "$body" ]]; then
+        printf '%s' "$body"
+    else
+        echo "# TODO: configure nvchecker source for \"${pkg}\""
+    fi
+    echo "────────────────────────────"
 }
 
 # Add NODOWNLOAD=yes after MD5SUM_x86_64 line if not already present

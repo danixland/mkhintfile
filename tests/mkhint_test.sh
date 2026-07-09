@@ -18,6 +18,9 @@ setup() {
              "$MOCK_REPO/development/clion" \
              "$MOCK_REPO/development/ghpkg" \
              "$MOCK_REPO/python/pypkg" \
+             "$MOCK_REPO/development/glpkg" \
+             "$MOCK_REPO/development/cbpkg" \
+             "$MOCK_REPO/development/crpkg" \
              "$MOCK_REPO/multimedia/yt-dlp" \
              "$MOCK_REPO/development/gopkg" \
              "$MOCK_REPO/development/rustpkg" \
@@ -105,6 +108,43 @@ VERSION="2.0.0"
 HOMEPAGE="https://pypi.org/project/pypkg/"
 DOWNLOAD="https://files.pythonhosted.org/packages/source/p/pypkg/pypkg-2.0.0.tar.gz"
 MD5SUM="22222222222222222222222222222222"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+
+    cat > "$MOCK_REPO/development/glpkg/glpkg.info" << 'EOF'
+PRGNAM="glpkg"
+VERSION="1.0.0"
+HOMEPAGE="https://gitlab.com/someowner/glpkg"
+DOWNLOAD="https://gitlab.com/someowner/glpkg/-/archive/1.0.0/glpkg-1.0.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+    cat > "$MOCK_REPO/development/cbpkg/cbpkg.info" << 'EOF'
+PRGNAM="cbpkg"
+VERSION="1.0.0"
+HOMEPAGE="https://codeberg.org/someowner/cbpkg"
+DOWNLOAD="https://codeberg.org/someowner/cbpkg/archive/1.0.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64=""
+MD5SUM_x86_64=""
+REQUIRES=""
+MAINTAINER="Test"
+EMAIL="test@test.com"
+EOF
+    cat > "$MOCK_REPO/development/crpkg/crpkg.info" << 'EOF'
+PRGNAM="crpkg"
+VERSION="1.0.0"
+HOMEPAGE="https://cran.r-project.org/package=crpkg"
+DOWNLOAD="https://cran.r-project.org/src/contrib/crpkg_1.0.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
 DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 REQUIRES=""
@@ -534,10 +574,13 @@ assert_file_not_exists "b.bak removed"           "$MOCK_HINT/b.hint.bak"
 # ── T16: --new github .info → github source section ───────────────────────────
 echo ""
 echo "T16: --new github .info → [pkg] source=github appended"
-run_mkhint -n ghpkg
+run_mkhint -n ghpkg > "$MOCK_BASE/t16.out" 2>&1
 assert_contains "github section header"  "$MOCK_BASE/nvchecker.toml" '\[ghpkg\]'
 assert_contains "github source"          "$MOCK_BASE/nvchecker.toml" 'source = "github"'
 assert_contains "github owner/repo"      "$MOCK_BASE/nvchecker.toml" 'github = "someowner/ghpkg"'
+assert_contains "github latest_release"  "$MOCK_BASE/nvchecker.toml" 'use_latest_release = true'
+assert_contains "github max_tag comment" "$MOCK_BASE/nvchecker.toml" '# use_max_tag = true'
+assert_contains "T16 stanza echoed"      "$MOCK_BASE/t16.out" 'source = "github"'
 
 # ── T17: --new pypi .info → pypi source section ───────────────────────────────
 echo ""
@@ -550,16 +593,41 @@ assert_contains "pypi name"               "$MOCK_BASE/nvchecker.toml" 'pypi = "p
 # ── T18: --new unrecognised URL → commented stub ──────────────────────────────
 echo ""
 echo "T18: --new unknown source → commented stub appended"
-run_mkhint -n clion
+rm -f "$MOCK_HINT/clion.hint" "$MOCK_HINT/clion.hint.bak"  # force fresh --new (T8 already created one)
+run_mkhint -n clion > "$MOCK_BASE/t18.out" 2>&1
 assert_contains "clion section header"    "$MOCK_BASE/nvchecker.toml" '\[clion\]'
 assert_contains "stub TODO"               "$MOCK_BASE/nvchecker.toml" 'TODO: configure nvchecker source'
+assert_contains "T18 stub echoed"         "$MOCK_BASE/t18.out" 'TODO: configure nvchecker source'
 
-# ── T19: --new when [pkg] already present → no duplicate ───────────────────────
+# ── T19: --new when [pkg] already present → no duplicate, dumps existing ───────
 echo ""
-echo "T19: --new when section exists → not duplicated"
-run_mkhint -n ghpkg  # ghpkg section already added in T16
+echo "T19: --new when section exists → not duplicated, existing dumped"
+rm -f "$MOCK_HINT/ghpkg.hint" "$MOCK_HINT/ghpkg.hint.bak"  # force fresh --new; nvchecker section stays from T16
+run_mkhint -n ghpkg > "$MOCK_BASE/t19.out" 2>&1  # ghpkg section already added in T16
 dup_count=$(grep -c '^\[ghpkg\]' "$MOCK_BASE/nvchecker.toml")
 assert_exit_code "ghpkg section appears once" 1 "$dup_count"
+assert_contains "T19 dumps existing"      "$MOCK_BASE/t19.out" 'github = "someowner/ghpkg"'
+
+# ── T-NV4: --new gitlab .info → gitlab section ────────────────────────────────
+echo ""
+echo "T-NV4: --new gitlab .info → source=gitlab"
+run_mkhint -n glpkg > /dev/null 2>&1
+assert_contains "gitlab source"  "$MOCK_BASE/nvchecker.toml" 'source = "gitlab"'
+assert_contains "gitlab field"   "$MOCK_BASE/nvchecker.toml" 'gitlab = "someowner/glpkg"'
+
+# ── T-NV5: --new codeberg .info → gitea source + host ─────────────────────────
+echo ""
+echo "T-NV5: --new codeberg .info → gitea + host"
+run_mkhint -n cbpkg > /dev/null 2>&1
+assert_contains "codeberg source" "$MOCK_BASE/nvchecker.toml" 'source = "gitea"'
+assert_contains "codeberg host"   "$MOCK_BASE/nvchecker.toml" 'host = "codeberg.org"'
+
+# ── T-NV6: --new cran .info → cran source ─────────────────────────────────────
+echo ""
+echo "T-NV6: --new cran .info → source=cran"
+run_mkhint -n crpkg > /dev/null 2>&1
+assert_contains "cran source" "$MOCK_BASE/nvchecker.toml" 'source = "cran"'
+assert_contains "cran field"  "$MOCK_BASE/nvchecker.toml" 'cran = "crpkg"'
 
 # ── T20: --hintfile no -v, accept suggestion → VERSION=latest, nvtake called ───
 echo ""
