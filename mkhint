@@ -584,14 +584,29 @@ fetch_manifest() {
     printf '%s\n' "$out"
 }
 
-# reconcile_bundle_deps <pkg> <hintfile> <manifest_url> <mode>
+# reconcile_bundle_deps <pkg> <hintfile> <manifest_url_or_ignored> <mode-arg>
+# Dispatch on the package's configured bundle mode. url-mode uses the manifest
+# URL argument (as before); sha-mode ignores it and reads BUNDLE_REST. Keeps the
+# three existing call sites unchanged. Returns whatever the mode handler returns.
+reconcile_bundle_deps() {
+    local pkg="$1"
+    case "${BUNDLE_MODE[$pkg]:-url}" in
+        sha) reconcile_bundle_deps_sha "$@" ;;
+        *)   reconcile_bundle_deps_url "$@" ;;
+    esac
+}
+
+# TEMPORARY stub for sha-mode; real body arrives in a later task.
+reconcile_bundle_deps_sha() { echo "  $1: sha-mode not yet implemented"; return 0; }
+
+# reconcile_bundle_deps_url <pkg> <hintfile> <manifest_url> <mode>
 # mode = report (print only) | apply (rewrite matched changed lines + md5).
 # Reconciles the DOWNLOAD line's extra URLs (index >= 1) against the manifest.
 # The primary URL (index 0) is never touched here. Guarded for set -e.
 # In report mode: returns 2 when there are changes to apply, 0 otherwise (all
 # current, no deps, fetch/parse fail) so a caller can skip the apply prompt.
 # apply mode always returns 0.
-reconcile_bundle_deps() {
+reconcile_bundle_deps_url() {
     local pkg="$1" hint="$2" murl="$3" mode="$4"
 
     # Display label for a dep URL: _url_stem is basename-only, so for a github
