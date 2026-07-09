@@ -536,32 +536,40 @@ match_dep_url() {
     return 1
 }
 
-# Loaded map: pkg name -> URL template. Populated by load_bundle_manifests.
-declare -A BUNDLE_MANIFESTS=()
+# Loaded maps: pkg -> mode ("url"|"sha"); pkg -> mode-specific remainder.
+# url:  remainder = the {VERSION} manifest URL template.
+# sha:  remainder = "<repo> <version-template> <name=path> <name=path>...".
+declare -A BUNDLE_MODE=()
+declare -A BUNDLE_REST=()
 load_bundle_manifests() {
-    BUNDLE_MANIFESTS=()
+    BUNDLE_MODE=(); BUNDLE_REST=()
     [[ -f "$BUNDLE_MANIFEST_FILE" ]] || return 0
-    local line pkg url
+    local line pkg mode rest
     while IFS= read -r line; do
         line="${line%%#*}"
         [[ -z "${line// }" ]] && continue
-        read -r pkg url <<< "$line"
-        [[ -n "$pkg" && -n "$url" ]] && BUNDLE_MANIFESTS["$pkg"]="$url"
+        read -r pkg mode rest <<< "$line"
+        [[ -n "$pkg" && -n "$mode" && -n "$rest" ]] || continue
+        BUNDLE_MODE["$pkg"]="$mode"
+        BUNDLE_REST["$pkg"]="$rest"
     done < "$BUNDLE_MANIFEST_FILE"
 }
 
-# manifest_url_for <pkg> <version> — echo the manifest URL for pkg with
-# {VERSION} substituted. Non-zero if pkg is not listed.
+# bundle_mode <pkg> — echo the mode for pkg, empty if not listed.
+bundle_mode() { printf '%s\n' "${BUNDLE_MODE[$1]:-}"; }
+
+# manifest_url_for <pkg> <version> — echo the url-mode manifest URL for pkg with
+# {VERSION} substituted. Non-zero if pkg is not a url-mode entry.
 manifest_url_for() {
     local pkg="$1" ver="$2"
-    local tmpl="${BUNDLE_MANIFESTS[$pkg]:-}"
-    [[ -z "$tmpl" ]] && return 1
+    [[ "${BUNDLE_MODE[$pkg]:-}" == "url" ]] || return 1
+    local tmpl="${BUNDLE_REST[$pkg]}"
     printf '%s\n' "${tmpl//\{VERSION\}/$ver}"
 }
 
-# True if pkg has a bundle manifest configured.
+# True if pkg has any bundle manifest configured (either mode).
 pkg_has_manifest() {
-    [[ -n "${BUNDLE_MANIFESTS[$1]:-}" ]]
+    [[ -n "${BUNDLE_MODE[$1]:-}" ]]
 }
 
 # fetch_manifest <url> — download the manifest to a temp file, echo its path.

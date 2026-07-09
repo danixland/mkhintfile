@@ -1611,7 +1611,7 @@ echo ""
 echo "T-BM6: manifest_url_for substitutes {VERSION}, unlisted pkg → non-zero"
 cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
 # comment
-neovim  https://example.com/neovim/v{VERSION}/deps.txt
+neovim url https://example.com/neovim/v{VERSION}/deps.txt
 EOF
 BM_SRC='source <(sed -n "/# ── bundled-dep manifest handling/,/# ── end bundled-dep/p" '"$SCRIPT"')'
 r=$(bash -c "BUNDLE_MANIFEST_FILE='$MOCK_BASE/bundle-manifests'; $BM_SRC; load_bundle_manifests; manifest_url_for neovim 0.13.0")
@@ -1756,7 +1756,7 @@ r=$(bash -c "$BM_SRC; match_dep_url 'https://github.com/JuliaStrings/utf8proc/ar
 echo ""
 echo "T-BM10: --new listed pkg → manifest report, hint not rewritten by manifest"
 cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
-bmnvim  https://example.com/bmnvim/v{VERSION}/deps.txt
+bmnvim url https://example.com/bmnvim/v{VERSION}/deps.txt
 EOF
 cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
 NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
@@ -1782,6 +1782,23 @@ echo "$out" | grep -qi 'manifest' \
     || { echo "  PASS: no manifest code for non-listed"; (( PASS++ )); }
 rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests"
 
+# ── T-BM-MODE: existing url-mode reconcile still works after 3-field migration ─
+echo ""
+echo "T-BM-MODE: url-mode reconcile still runs after 3-field manifest migration"
+cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+bmnvim url https://raw.githubusercontent.com/neovim/neovim/{VERSION}/deps.txt
+EOF
+cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
+UTF8PROC_URL https://github.com/juliastrings/utf8proc/archive/v2.9.0.tar.gz
+UTF8PROC_SHA256 a
+EOF
+rm -f "$MOCK_HINT/bmnvim.hint"
+out=$(run_mkhint -n bmnvim 2>&1)
+echo "$out" | grep -q 'bmnvim: bundled-dep manifest check' \
+    && { echo "  PASS: url-mode reconcile ran"; (( PASS++ )); } \
+    || { echo "  FAIL: url-mode reconcile did not run. out=$out"; (( FAIL++ )) || true; ERRORS+=("T-BM-MODE"); }
+rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bmnvim.hint"
+
 # ── T-BM12: --force with --hintfile → exit 1 ─────────────────────────────────
 echo ""
 echo "T-BM12: --force is --check-only (errors with --hintfile/--new/--fix-current)"
@@ -1801,7 +1818,7 @@ set -e
 # ── T-BM13..16: --check Phase 2 bundled-dep reconcile for listed packages ────
 setup_bmnvim_check() {
     cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
-bmnvim  https://example.com/bmnvim/v{VERSION}/deps.txt
+bmnvim url https://example.com/bmnvim/v{VERSION}/deps.txt
 EOF
     cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
 NVIM_URL https://github.com/neovim/neovim/archive/v0.13.0.tar.gz
@@ -1913,7 +1930,7 @@ rm -f "$MOCK_BASE/manifest_fixture" "$MOCK_BASE/bundle-manifests" "$MOCK_HINT/bm
 echo ""
 echo "T-BM18: -f listed pkg -V bumps primary AND reconciles bundled deps"
 cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
-bmnvim  https://example.com/bmnvim/v{VERSION}/deps.txt
+bmnvim url https://example.com/bmnvim/v{VERSION}/deps.txt
 EOF
 cat > "$MOCK_BASE/manifest_fixture" << 'EOF'
 NVIM_URL https://github.com/neovim/neovim/archive/v0.14.0.tar.gz
