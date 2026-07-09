@@ -1,4 +1,4 @@
-% MKHINT(1) mkhint 1.2.4 | User Commands
+% MKHINT(1) mkhint 1.2.5 | User Commands
 % Danilo M.
 % July 2026
 
@@ -21,6 +21,8 @@ mkhint - manage hint files for slackrepo scripts
 **mkhint** **\--review** \[*FILE*...]
 
 **mkhint** **\--delete** *FILE*...
+
+**mkhint** **\--info** *FILE*
 
 **mkhint** **\--clean**
 
@@ -55,7 +57,11 @@ to *FILE*.bak first.
 `HOMEPAGE`, `MAINTAINER`, and `EMAIL`, comments out `REQUIRES`, and sets
 `ARCH="x86_64"`, keeping only the variables a hint needs. `VERSION` is kept
 from the `.info` unless **-V** is given. Appends an **nvchecker** section to the
-config, autodetecting a github or pypi source or leaving a commented stub.
+config, autodetecting the upstream source (github, gitlab, bitbucket, gitea,
+codeberg, pagure, pypi, npm, gems, crates.io, cpan, hackage, packagist, or
+cran) or leaving a commented stub when nothing matches. Prints the managed
+**nvchecker** stanza on stdout, whether it was just added or was already
+present.
 
 **\--check**, **-C** \[*FILE*...]
 : Check all (or the named) hints for upstream updates via **nvchecker** and
@@ -79,6 +85,13 @@ show a diff and prompt **[K]eep / [D]elete / [S]kip**.
 
 **\--delete**, **-d** *FILE*...
 : Delete a hint file and its `.bak`. Accepts multiple names.
+
+**\--info**, **-i** *FILE*
+: Show a package's `category/program` path (green on a TTY), then its
+`README`. Paged with a sticky header (`less --header=1`) only when the
+`README` is taller than the terminal; printed inline when it fits or when
+piped. Missing package exits 2; missing `README` prints `(no README)` and
+exits 0. Mutually exclusive with **-V**, **-f**, **-n**.
 
 **\--clean**, **-c**
 : Remove all `.bak` files from the hint directory.
@@ -132,6 +145,7 @@ List, review, sweep, delete, clean:
     mkhint --review
     mkhint --fix-current
     mkhint --delete mypackage
+    mkhint --info mypackage
     mkhint --clean
 
 URLs set to `UNSUPPORTED` or `UNTESTED` are skipped during download.

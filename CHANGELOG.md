@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.5] - 2026-07-09
+
+### Added
+- `--info` / `-i <pkg>`: shows a package's `category/program` path (green on a
+  TTY) followed by its README, paged with a sticky header (`less --header=1`)
+  only when the README is taller than the terminal. Missing package exits 2;
+  missing README prints `(no README)` and exits 0. Mutually exclusive with
+  `-V`/`-f`/`-n`.
+
+### Changed
+- `--new` / `-n` now prints the nvchecker stanza it manages on stdout, fenced,
+  whether it was just added or was already present, so the effect of the
+  autodetection is visible immediately instead of only living in the config
+  file.
+- Expanded nvchecker source autodetection (`_detect_nvchecker_source`) beyond
+  github and pypi to also recognize gitlab, bitbucket, gitea, codeberg, and
+  pagure owner/repo URLs, and the npm, gems, crates.io, cpan, hackage,
+  packagist, and cran registries. Registry sources parse the package name from
+  the URL where possible, falling back to `PRGNAM`.
+
 ## [1.2.4] - 2026-07-08
 
 ### Changed

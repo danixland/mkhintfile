@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.2.4"
+readonly MKHINT_VERSION="1.2.5"
 
 # Variables
 VERSION=""
@@ -81,6 +81,7 @@ Options:
   --fix-current, -F        Add/merge DELREQUIRES for -current phantom deps across the whole repo
   --delete, -d FILE        Delete a hint file (and .bak if present)
   --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
+  --info, -i FILE          Show category/program path and README for a package
   --force                  With --check: reconcile bundled deps even if the primary version is unchanged
   --help, -h               Show this help message
 
