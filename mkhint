@@ -969,7 +969,10 @@ create_new_hint_file() {
             _bm_pkg="${_bm_pkg##*/}"
             if pkg_has_manifest "$_bm_pkg"; then
                 local _bm_ver; _bm_ver=$(grep '^VERSION=' "$normalized_file" | sed 's/VERSION="//;s/"$//')
-                local _bm_url; _bm_url=$(manifest_url_for "$_bm_pkg" "$_bm_ver")
+                local _bm_url=""
+                if [[ "$(bundle_mode "$_bm_pkg")" == "url" ]]; then
+                    _bm_url=$(manifest_url_for "$_bm_pkg" "$_bm_ver") || _bm_url=""
+                fi
                 echo ""
                 echo "$_bm_pkg: bundled-dep manifest check"
                 reconcile_bundle_deps "$_bm_pkg" "$normalized_file" "$_bm_url" report || true
@@ -1618,6 +1621,7 @@ clean_bak_files() {
 # Usage: check_updates [pkg...]   (no args = all *.hint in HINT_DIR)
 check_updates() {
     check_nvchecker
+    local -A prev_version=()   # pkg -> version before this run's bump (Job B)
 
     if [[ ! -d "$HINT_DIR" ]]; then
         echo "Error: Hint directory does not exist: $HINT_DIR" >&2
@@ -1673,6 +1677,7 @@ check_updates() {
         outdated_old+=("$current")
         outdated_new+=("$latest_norm")
         outdated_flag+=("$flag")
+        prev_version["$pkg"]="$current"   # pre-bump version for Job B
     done
 
     # Offer to populate nvchecker.toml for packages with no section
@@ -1752,7 +1757,10 @@ check_updates() {
             continue
         fi
         local cur; cur=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
-        local murl; murl=$(manifest_url_for "$pkg" "$cur") || continue
+        local murl=""
+        if [[ "$(bundle_mode "$pkg")" == "url" ]]; then
+            murl=$(manifest_url_for "$pkg" "$cur") || continue
+        fi
         echo ""
         echo "Bundled-dep reconcile: $pkg (manifest @ $cur)"
         local rc=0
@@ -1766,6 +1774,11 @@ check_updates() {
             if [[ "$ans" =~ ^[Yy]$ ]]; then
                 reconcile_bundle_deps "$pkg" "$hintpath" "$murl" apply || true
             fi
+        fi
+        # Job B: submodule inventory / set-drift roster (sha-mode only).
+        if [[ "$(bundle_mode "$pkg")" == "sha" ]]; then
+            local _old_ver="${prev_version[$pkg]:-$cur}" _new_ver="$cur"
+            detect_set_drift "$pkg" "$_old_ver" "$_new_ver" || true
         fi
     done
 }
@@ -1961,7 +1974,10 @@ main() {
             if pkg_has_manifest "$_bm_pkg"; then
                 local _bm_hint="${HINT_DIR%/}/${_bm_pkg}.hint"
                 local _bm_cur; _bm_cur=$(grep '^VERSION=' "$_bm_hint" | sed 's/VERSION="//;s/"$//')
-                local _bm_url; _bm_url=$(manifest_url_for "$_bm_pkg" "$_bm_cur")
+                local _bm_url=""
+                if [[ "$(bundle_mode "$_bm_pkg")" == "url" ]]; then
+                    _bm_url=$(manifest_url_for "$_bm_pkg" "$_bm_cur") || _bm_url=""
+                fi
                 echo ""
                 echo "Bundled-dep reconcile: $_bm_pkg (manifest @ $_bm_cur)"
                 local _bm_rc=0

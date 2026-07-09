@@ -2471,6 +2471,45 @@ assert_contains "roster on force"  <(echo "$out") "submodule inventory 2024.5.0 
 assert_not_contains "no + glyph"   <(echo "$out") "+ src/plugins/foo"
 rm -f "$MOCK_BASE/gitmodules_2024.4.1" "$MOCK_BASE/gitmodules_2024.5.0"
 
+# ── T-SHA-CHECK: --check --force openvino runs Job A reconcile + Job B roster ───
+# End-to-end wiring test: with openvino sha-mode listed, current (no bump), and
+# --force set, the --check reconcile loop must reach BOTH the sha reconcile
+# (Job A) and the submodule inventory (Job B). Pre-Task-6 the sha package was
+# skipped because manifest_url_for returns non-zero for sha mode.
+echo ""
+echo "T-SHA-CHECK: --check --force openvino runs Job A reconcile + Job B roster"
+emit_openvino_fixtures   # openvino.hint, bundle-manifests (sha), api_mlas/onnx
+# nvchecker "sees" openvino as current (2024.4.1) so no bump; --force drives the
+# reconcile loop anyway.
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "openvino": { "version": "2024.4.1" } } }
+EOF
+cp "$MOCK_BASE/new_ver.json" "$MOCK_BASE/old_ver.json"
+# openvino .info in the mock repo (so --check can look it up if needed)
+mkdir -p "$MOCK_REPO/development/openvino"
+cat > "$MOCK_REPO/development/openvino/openvino.info" << 'EOF'
+PRGNAM="openvino"
+VERSION="2024.4.1"
+EOF
+# nvchecker section so the scan recognizes openvino (avoids missing-section path)
+printf '\n[openvino]\nsource = "github"\ngithub = "openvinotoolkit/openvino"\n' >> "$MOCK_BASE/nvchecker.toml"
+# .gitmodules at the current ref for Job B (old==new==2024.4.1)
+cat > "$MOCK_BASE/gitmodules_2024.4.1" << 'EOF'
+[submodule "onnx"]
+	path = thirdparty/onnx/onnx
+	url = https://github.com/onnx/onnx.git
+[submodule "mlas"]
+	path = src/plugins/intel_cpu/thirdparty/mlas
+	url = https://github.com/openvinotoolkit/mlas.git
+EOF
+echo "y" | run_mkhint -C --force openvino > "$MOCK_BASE/chk.out" 2>&1 || true
+assert_contains "Job A ran (sha reconcile)"     "$MOCK_BASE/chk.out" "bundled deps (sha)"
+assert_contains "Job B ran (submodule inventory)" "$MOCK_BASE/chk.out" "submodule inventory"
+rm -f "$MOCK_HINT/openvino.hint" "$MOCK_HINT/openvino.hint.bak" \
+      "$MOCK_BASE/bundle-manifests" "$MOCK_BASE/gitmodules_2024.4.1" \
+      "$MOCK_BASE/api_mlas.json" "$MOCK_BASE/api_onnx.json"
+rm -rf "$MOCK_REPO/development/openvino"
+
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
 
