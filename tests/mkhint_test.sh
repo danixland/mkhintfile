@@ -231,10 +231,15 @@ google-go-lang
 EOF
 
     # nvchecker config + keyfile for tests
+    cat > "$MOCK_BASE/keys.toml" << 'EOF'
+[keys]
+github = "FAKE_TEST_TOKEN_123"
+EOF
     cat > "$MOCK_BASE/nvchecker.toml" << EOF
 [__config__]
 oldver = "$MOCK_BASE/old_ver.json"
 newver = "$MOCK_BASE/new_ver.json"
+keyfile = "$MOCK_BASE/keys.toml"
 EOF
     # keyfile pre-seeded with versions the mock nvchecker will "find"
     cat > "$MOCK_BASE/new_ver.json" << 'EOF'
@@ -247,9 +252,11 @@ teardown() {
     rm -rf "$MOCK_BASE"
 }
 
-run_mkhint() {
-    local tmp_script
-    tmp_script=$(mktemp /tmp/mkhint_patched_XXXXXX)
+# patch_mkhint — write a path-patched copy of mkhint (mock dirs baked in) to
+# $PATCHED_MKHINT and echo that path. Shared by run_mkhint and run_mkhint_fn so
+# both execute/source the identical patched script.
+PATCHED_MKHINT="$MOCK_BASE/mkhint_patched"
+patch_mkhint() {
     sed \
         -e "s|REPO_DIR=\".*\"|REPO_DIR=\"$MOCK_REPO\"|" \
         -e "s|HINT_DIR=\".*\"|HINT_DIR=\"$MOCK_HINT\"|" \
@@ -259,11 +266,24 @@ run_mkhint() {
         -e "s|BUNDLE_MANIFEST_FILE=\".*\"|BUNDLE_MANIFEST_FILE=\"$MOCK_BASE/bundle-manifests\"|" \
         -e "s|PACKAGES_DIR=\".*\"|PACKAGES_DIR=\"$MOCK_PKGS\"|" \
         -e "s|MKHINT_CONFIG=\".*\"|MKHINT_CONFIG=\"$MOCK_BASE/config\"|" \
-        "$SCRIPT" > "$tmp_script"
-    bash "$tmp_script" "$@"
-    local rc=$?
-    rm -f "$tmp_script"
-    return $rc
+        "$SCRIPT" > "$PATCHED_MKHINT"
+}
+
+run_mkhint() {
+    patch_mkhint
+    bash "$PATCHED_MKHINT" "$@"
+    return $?
+}
+
+# run_mkhint_fn <fn> [args...] — source the path-patched mkhint (guarded so main
+# doesn't execute) and invoke a single function.
+run_mkhint_fn() {
+    local fn="$1"; shift
+    patch_mkhint
+    MKHINT_NOMAIN=1 bash -c '
+        source "'"$PATCHED_MKHINT"'"
+        "'"$fn"'" "$@"
+    ' _ "$@"
 }
 
 # Mock wget — writes fake content, md5 will be deterministic. URLs containing
@@ -274,6 +294,7 @@ mock_wget() {
     mkdir -p "$MOCK_BASE/bin"
     cat > "$MOCK_BASE/bin/wget" << EOF
 #!/bin/bash
+all_args="\$*"
 url=""
 out=""
 while [[ \$# -gt 0 ]]; do
@@ -286,6 +307,13 @@ if [[ "\$url" == *deps.txt* && -f "$MOCK_BASE/manifest_fixture" ]]; then
     cat "$MOCK_BASE/manifest_fixture" > "\$out"
 elif [[ "\$url" == *deps.txt* ]]; then
     exit 1   # simulate manifest fetch failure when no fixture set
+elif [[ "\$url" == *api.github.com*contents* ]]; then
+    echo "wget-args: \$all_args" >> "$MOCK_BASE/api.log"
+    if [[ -f "$MOCK_BASE/api_fixture" ]]; then
+        cat "$MOCK_BASE/api_fixture" > "\$out"
+    else
+        exit 1
+    fi
 else
     echo "FAKE_CONTENT_FOR_\${url}" > "\$out"
 fi
@@ -2226,6 +2254,37 @@ out=$(MKHINT_FORCE_COLOR=1 run_mkhint -i curl 2>&1)
 echo "$out" > "$MOCK_BASE/info9.out"
 assert_contains "info9 eq glyph"    "$MOCK_BASE/info9.out" '='
 rm -f "$MOCK_HINT/curl.hint"
+
+# ── T-SHA6a: _github_token reads github key from nvchecker keyfile ─────────────
+# Earlier nvchecker-section tests rewrite nvchecker.toml (dropping the keyfile
+# line), so restore a keyfile-bearing config here before the token test.
+echo ""
+echo "T-SHA6a: _github_token reads github key from nvchecker keyfile"
+cat > "$MOCK_BASE/keys.toml" << 'EOF'
+[keys]
+github = "FAKE_TEST_TOKEN_123"
+EOF
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+keyfile = "$MOCK_BASE/keys.toml"
+EOF
+tok=$(run_mkhint_fn _github_token)
+assert_contains "token parsed" <(echo "$tok") "FAKE_TEST_TOKEN_123"
+
+# ── T-SHA6b: _fetch_submodule_sha returns sha+subrepo, sends auth header ────────
+echo ""
+echo "T-SHA6b: _fetch_submodule_sha returns sha+subrepo and sends auth header"
+cat > "$MOCK_BASE/api_fixture" << 'EOF'
+{"type":"submodule","sha":"d1bc25ec4660cddd87804fcf03b2411b5dfb2e94","submodule_git_url":"https://github.com/openvinotoolkit/mlas.git"}
+EOF
+rm -f "$MOCK_BASE/api.log"
+res=$(run_mkhint_fn _fetch_submodule_sha github:openvinotoolkit/openvino src/plugins/intel_cpu/thirdparty/mlas 2024.4.1)
+assert_contains "sha returned"    <(echo "$res") "d1bc25ec4660cddd87804fcf03b2411b5dfb2e94"
+assert_contains "subrepo lc"      <(echo "$res") "openvinotoolkit/mlas"
+assert_contains "auth header sent" "$MOCK_BASE/api.log" "Authorization: Bearer FAKE_TEST_TOKEN_123"
+rm -f "$MOCK_BASE/api_fixture"
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown

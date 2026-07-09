@@ -599,6 +599,46 @@ reconcile_bundle_deps() {
 # TEMPORARY stub for sha-mode; real body arrives in a later task.
 reconcile_bundle_deps_sha() { echo "  $1: sha-mode not yet implemented"; return 0; }
 
+# _github_token — echo a GitHub token from nvchecker's keyfile, or nothing.
+# nvchecker.toml has `keyfile = "<path>"`; that file has `github = "<token>"`.
+_github_token() {
+    local kf
+    kf=$(grep -E '^[[:space:]]*keyfile[[:space:]]*=' "$NVCHECKER_CONFIG" 2>/dev/null \
+         | head -1 | cut -d '"' -f2)
+    [[ -n "$kf" ]] || return 0
+    [[ "$kf" != /* ]] && kf="$(dirname "$NVCHECKER_CONFIG")/$kf"
+    [[ -f "$kf" ]] || return 0
+    grep -E '^[[:space:]]*github[[:space:]]*=' "$kf" 2>/dev/null \
+        | head -1 | cut -d '"' -f2
+}
+
+# _fetch_submodule_sha <repo> <path> <ref> — GET the contents API for a submodule
+# path at ref; echo "<sha>\t<submodule_owner/repo lowercased>". Non-zero on fail.
+# Authed with _github_token when present (5000/h vs 60/h anon).
+_fetch_submodule_sha() {
+    local repo="$1" path="$2" ref="$3"
+    repo="${repo#github:}"
+    local url="https://api.github.com/repos/${repo}/contents/${path}?ref=${ref}"
+    [[ -d "$TMP_DIR" ]] || mkdir -p "$TMP_DIR"
+    local out="${TMP_DIR}/api_resp"
+    rm -f "$out"
+    local tok; tok=$(_github_token)
+    local -a auth=()
+    [[ -n "$tok" ]] && auth=(--header="Authorization: Bearer $tok")
+    wget "${auth[@]}" -O "$out" "$url" >&2 || return 1
+    [[ -s "$out" ]] || return 1
+    local sha suburl
+    sha=$(jq -r '.sha // empty' "$out")
+    suburl=$(jq -r '.submodule_git_url // empty' "$out")
+    [[ -n "$sha" ]] || return 1
+    local sr=""
+    if [[ "$suburl" =~ github\.com/([^/]+)/([^/]+) ]]; then
+        printf -v sr '%s/%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%.git}"
+        sr="${sr,,}"
+    fi
+    printf '%s\t%s\n' "$sha" "$sr"
+}
+
 # reconcile_bundle_deps_url <pkg> <hintfile> <manifest_url> <mode>
 # mode = report (print only) | apply (rewrite matched changed lines + md5).
 # Reconciles the DOWNLOAD line's extra URLs (index >= 1) against the manifest.
@@ -1822,5 +1862,5 @@ main() {
 # reach individual functions without triggering the CLI (and its `exit 1`
 # for a no-args invocation).
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
+    [[ -n "${MKHINT_NOMAIN:-}" ]] || main "$@"
 fi
