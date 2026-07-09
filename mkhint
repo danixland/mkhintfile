@@ -1041,7 +1041,7 @@ EOF
     echo "────────────────────────────"
     printf '%s\n' "$label"
     if [[ -n "$body" ]]; then
-        printf '%s' "$body"
+        printf '%s\n' "$body"
     else
         echo "# TODO: configure nvchecker source for \"${pkg}\""
     fi

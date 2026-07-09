@@ -581,6 +581,9 @@ assert_contains "github owner/repo"      "$MOCK_BASE/nvchecker.toml" 'github = "
 assert_contains "github latest_release"  "$MOCK_BASE/nvchecker.toml" 'use_latest_release = true'
 assert_contains "github max_tag comment" "$MOCK_BASE/nvchecker.toml" '# use_max_tag = true'
 assert_contains "T16 stanza echoed"      "$MOCK_BASE/t16.out" 'source = "github"'
+# closing fence must sit on its own line, not glued to the last body line
+assert_contains "T16 closing fence on own line" "$MOCK_BASE/t16.out" '^────────────────────────────$'
+assert_contains "T16 prefix line intact"        "$MOCK_BASE/t16.out" 'uncomment if tags are v-prefixed$'
 
 # ── T17: --new pypi .info → pypi source section ───────────────────────────────
 echo ""
