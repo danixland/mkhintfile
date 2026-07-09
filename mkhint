@@ -60,6 +60,7 @@ RUN_REVIEW=""
 COMMAND=""
 NO_DL=0
 FORCE=0
+INFO_PKG=""
 
 # Show help message
 show_help() {
@@ -1490,6 +1491,11 @@ main() {
                 NEW_HINT_FILE="$2"
                 shift 2
                 ;;
+            --info|-i)
+                COMMAND="info"
+                INFO_PKG="$2"
+                shift 2
+                ;;
             --list|-l)
                 SHOW_LIST=1
                 shift
@@ -1575,6 +1581,11 @@ main() {
 
     if [[ "$COMMAND" == "fix-current" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
         echo "Error: --fix-current cannot be combined with --set-version/--hintfile/--new" >&2
+        exit 1
+    fi
+
+    if [[ "$COMMAND" == "info" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
+        echo "Error: --info cannot be combined with --set-version/--hintfile/--new" >&2
         exit 1
     fi
 
