@@ -715,6 +715,69 @@ _fetch_submodule_sha() {
     printf '%s\t%s\n' "$sha" "$sr"
 }
 
+# _fetch_gitmodules_paths <repo> <ref> — echo each submodule "path" line from the
+# .gitmodules at ref (one per line). Non-zero on fetch fail.
+_fetch_gitmodules_paths() {
+    local repo="${1#github:}" ref="$2"
+    local url="https://raw.githubusercontent.com/${repo}/${ref}/.gitmodules"
+    [[ -d "$TMP_DIR" ]] || mkdir -p "$TMP_DIR"
+    local out="${TMP_DIR}/gitmodules_${ref}"
+    rm -f "$out"
+    wget -O "$out" "$url" >&2 || return 1
+    [[ -s "$out" ]] || return 1
+    grep -E '^[[:space:]]*path[[:space:]]*=' "$out" | sed 's/.*=[[:space:]]*//'
+}
+
+# detect_set_drift <pkg> <old-ver> <new-ver> — print the full submodule inventory
+# roster. Diffs .gitmodules@old vs @new; tags each submodule bundled/(ignored),
+# with +/- change glyphs and ACTION (bundled removed) / review (new unbundled).
+# FYI only, never edits. Skips with a notice if a fetch fails.
+detect_set_drift() {
+    local pkg="$1" oldv="$2" newv="$3"
+    local rest="${BUNDLE_REST[$pkg]}"
+    local repo; read -r repo _ rest <<< "$rest"
+    local -A bundled=()
+    local pair
+    for pair in $rest; do bundled["${pair#*=}"]=1; done
+
+    local -a new_paths old_paths
+    local gm_new gm_old
+    gm_new=$(_fetch_gitmodules_paths "$repo" "$newv") || {
+        echo "  $pkg: .gitmodules@$newv unavailable — inventory skipped"; return 0; }
+    mapfile -t new_paths <<< "$gm_new"
+    if [[ "$oldv" == "$newv" ]]; then
+        old_paths=("${new_paths[@]}")
+    else
+        gm_old=$(_fetch_gitmodules_paths "$repo" "$oldv") || {
+            echo "  $pkg: .gitmodules@$oldv unavailable — inventory skipped"; return 0; }
+        mapfile -t old_paths <<< "$gm_old"
+    fi
+    local -A in_old=() in_new=()
+    local p; for p in "${old_paths[@]}"; do in_old["$p"]=1; done
+    for p in "${new_paths[@]}"; do in_new["$p"]=1; done
+
+    echo ""
+    echo "$pkg submodule inventory $oldv -> $newv:"
+    local glyph tag
+    for p in "${new_paths[@]}"; do
+        glyph=" "; [[ -z "${in_old[$p]:-}" ]] && glyph="+"
+        if [[ -n "${bundled[$p]:-}" ]]; then
+            tag="bundled"
+        else
+            tag="(ignored)"; [[ "$glyph" == "+" ]] && tag="review (new, not bundled)"
+        fi
+        printf '  %s %-46s %s\n' "$glyph" "$p" "$tag"
+    done
+    for p in "${old_paths[@]}"; do
+        [[ -n "${in_new[$p]:-}" ]] && continue
+        if [[ -n "${bundled[$p]:-}" ]]; then
+            printf '  %s %-46s %s\n' "-" "$p" "ACTION (bundled, removed upstream)"
+        else
+            printf '  %s %-46s %s\n' "-" "$p" "(ignored, removed upstream)"
+        fi
+    done
+}
+
 # reconcile_bundle_deps_url <pkg> <hintfile> <manifest_url> <mode>
 # mode = report (print only) | apply (rewrite matched changed lines + md5).
 # Reconciles the DOWNLOAD line's extra URLs (index >= 1) against the manifest.

@@ -299,6 +299,17 @@ run_sha_reconcile() {
     ' _ "$@"
 }
 
+# run_set_drift <pkg> <old-ver> <new-ver> — source the patched mkhint, load the
+# bundle manifests (so BUNDLE_REST is populated), then call detect_set_drift.
+run_set_drift() {
+    patch_mkhint
+    MKHINT_NOMAIN=1 bash -c '
+        source "'"$PATCHED_MKHINT"'"
+        load_bundle_manifests
+        detect_set_drift "$@"
+    ' _ "$@"
+}
+
 # Mock wget — writes fake content, md5 will be deterministic. URLs containing
 # deps.txt instead serve a manifest fixture ($MOCK_BASE/manifest_fixture) if
 # present, so bundled-dep manifest tests can control fetch_manifest's input.
@@ -328,6 +339,13 @@ elif [[ "\$url" == *api.github.com*contents* ]]; then
         cat "$MOCK_BASE/api_\$key.json" > "\$out"
     elif [[ -f "$MOCK_BASE/api_fixture" ]]; then
         cat "$MOCK_BASE/api_fixture" > "\$out"
+    else
+        exit 1
+    fi
+elif [[ "\$url" == *.gitmodules* ]]; then
+    ref="\${url%%/.gitmodules*}"; ref="\${ref##*/}"
+    if [[ -f "$MOCK_BASE/gitmodules_\$ref" ]]; then
+        cat "$MOCK_BASE/gitmodules_\$ref" > "\$out"
     else
         exit 1
     fi
@@ -2403,6 +2421,55 @@ assert_contains "report foo no matching line" <(echo "$out") "foo: no matching D
     || { echo "  FAIL: line count changed $before -> $after"; (( FAIL++ )) || true; ERRORS+=("T-SHA7 count"); }
 rm -f "$MOCK_BASE/api_foo.json" "$MOCK_HINT/openvino.hint"
 # T-SHA4 (--new prints reconcile report) deferred: needs --new wiring (later task).
+
+# ── T-SET1..6: submodule inventory roster (Job B, detect_set_drift) ─────────────
+echo ""
+echo "T-SET1..4: submodule inventory roster — added/removed/bundled/ignored tags"
+cat > "$MOCK_BASE/gitmodules_2024.4.1" << 'EOF'
+[submodule "onnx"]
+	path = thirdparty/onnx/onnx
+	url = https://github.com/onnx/onnx.git
+[submodule "mlas"]
+	path = src/plugins/intel_cpu/thirdparty/mlas
+	url = https://github.com/openvinotoolkit/mlas.git
+[submodule "gtest"]
+	path = thirdparty/gtest/gtest
+	url = https://github.com/openvinotoolkit/googletest.git
+EOF
+cat > "$MOCK_BASE/gitmodules_2024.5.0" << 'EOF'
+[submodule "newdep"]
+	path = src/plugins/foo/thirdparty/newdep
+	url = https://github.com/foo/newdep.git
+[submodule "mlas"]
+	path = src/plugins/intel_cpu/thirdparty/mlas
+	url = https://github.com/openvinotoolkit/mlas.git
+[submodule "gtest"]
+	path = thirdparty/gtest/gtest
+	url = https://github.com/openvinotoolkit/googletest.git
+EOF
+cat > "$MOCK_BASE/bundle-manifests" << 'EOF'
+openvino sha github:openvinotoolkit/openvino {VERSION} mlas=src/plugins/intel_cpu/thirdparty/mlas onnx=thirdparty/onnx/onnx
+EOF
+out=$(run_set_drift openvino 2024.4.1 2024.5.0)
+assert_contains "onnx removed shown"  <(echo "$out") "thirdparty/onnx/onnx"
+assert_contains "onnx ACTION"         <(echo "$out") "ACTION (bundled, removed upstream)"
+assert_contains "newdep added review" <(echo "$out") "review (new, not bundled)"
+assert_contains "mlas bundled"        <(echo "$out") "bundled"
+assert_contains "gtest ignored"       <(echo "$out") "(ignored)"
+
+# ── T-SET5: fetch fail at old ref (no fixture) — inventory skipped notice ───────
+echo ""
+echo "T-SET5: fetch failure at old ref — inventory skipped"
+out=$(run_set_drift openvino 1999.0.0 2024.5.0)
+assert_contains "fetch-fail skip notice" <(echo "$out") "inventory skipped"
+
+# ── T-SET6: force no-bump old==new — roster prints, no + glyph ──────────────────
+echo ""
+echo "T-SET6: old==new (force) — roster prints, no + glyph"
+out=$(run_set_drift openvino 2024.5.0 2024.5.0)
+assert_contains "roster on force"  <(echo "$out") "submodule inventory 2024.5.0 -> 2024.5.0"
+assert_not_contains "no + glyph"   <(echo "$out") "+ src/plugins/foo"
+rm -f "$MOCK_BASE/gitmodules_2024.4.1" "$MOCK_BASE/gitmodules_2024.5.0"
 
 # ─── SUMMARY ──────────────────────────────────────────────────────────────────
 teardown
