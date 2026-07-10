@@ -230,9 +230,15 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 
 ## Installation
 
+`install.sh` installs (or uninstalls) all three files: system-wide as root
+(`/usr/local/bin`, the detected `/etc/bash_completion.d` or
+`/etc/bash-completion.d`, `/usr/local/man/man1`), user-only under XDG
+`~/.local` as a normal user. `./install.sh` to install, `./install.sh
+uninstall` to remove. Manual equivalent:
+
 ```bash
 sudo cp mkhint /usr/local/bin/mkhint
-sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
+sudo cp mkhint.bash-completion /etc/bash_completion.d/mkhint
 sudo cp mkhint.1.gz /usr/local/man/man1/mkhint.1.gz
 ```
 
@@ -242,3 +248,36 @@ names are `\--`-escaped in the source so pandoc's man output renders the
 double-dash flags. `--help` is a compact summary that points at `man mkhint`;
 the full reference (usage examples, configuration, exit codes) lives in the
 man page.
+
+## Releasing
+
+SemVer, tags `vX.Y.Z`. The full cut, in order (a pushed tag cannot be
+retagged, so everything before the tag must be verified first):
+
+1. **Bump + document.** Set `readonly MKHINT_VERSION` in `mkhint`. Turn the
+   `CHANGELOG.md` `[Unreleased]` heading into `[X.Y.Z] - <date>` (or add the
+   section). Update `README.md`, `mkhint.1.md`, and the relevant `## Key
+   Behaviors` bullet + test-table row in this file for any new feature.
+2. **Rebuild the man page.** `pandoc mkhint.1.md -s -t man -o mkhint.1 && gzip
+   -9 -n -f mkhint.1` (commit the regenerated `mkhint.1.gz`).
+3. **Test.** `bash tests/mkhint_test.sh` must be all-pass. Every feature ships
+   its own test case.
+4. **Deploy to the VM and smoke-test there BEFORE tagging.** `scp` the three
+   files to `buildsystem` (`/usr/local/bin/mkhint`,
+   `/etc/bash_completion.d/mkhint`, `/usr/local/man/man1/mkhint.1.gz`), confirm
+   `mkhint --version` and md5s match local, and exercise the new feature on the
+   VM's real data (it has real hints and built packages the mock suite can't
+   cover). Completion changes need a shell re-source to take effect.
+5. **Commit + tag, signed.** GPG-signed release commit, then `git tag -s
+   vX.Y.Z`. Verify with `git log --format='%h %G? %s' -1` (want `G`) and `git
+   tag -v vX.Y.Z` (want "Good signature").
+6. **Push everything to all three remotes.** `origin` has three push URLs
+   (danix_git, slackware_forge, github); `git push origin master` and `git push
+   origin vX.Y.Z` fan out to all. Verify the tag landed on each.
+7. **Publish Releases** on GitHub and the forge from the CHANGELOG section
+   (extract the version body with awk). GitHub: `gh release create vX.Y.Z -R
+   danixland/mkhintfile --title "mkhint X.Y.Z" --notes-file <notes> --latest`.
+   Forge: `tea release create --repo danix/mkhintfile --tag vX.Y.Z --title
+   "mkhint X.Y.Z" --note-file <notes>` (tea has no GPG-key management; the
+   signing key is added to each host's account once, via web UI for the forge).
+   danix_git keeps tags only, no Release objects.
