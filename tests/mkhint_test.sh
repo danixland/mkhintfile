@@ -1436,6 +1436,40 @@ echo "$out" | grep curl.hint | grep -q "✓" \
     && { echo "  FAIL: ✓ shown without DELREQUIRES"; (( FAIL++ )); ERRORS+=("T64 check"); } \
     || { echo "  PASS: no ✓ without DELREQUIRES"; (( PASS++ )); }
 
+# ── T68: -l shows ✓ in NoDL for hint with NODOWNLOAD=yes ─────────────────────
+echo ""
+echo "T68: -l NoDL column shows ✓ when NODOWNLOAD=yes"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+NODOWNLOAD=yes
+EOF
+out=$(run_mkhint -l 2>&1)
+echo "$out" | grep -q "NoDL" \
+    && { echo "  PASS: NoDL header present"; (( PASS++ )); } \
+    || { echo "  FAIL: NoDL header missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T68 header"); }
+echo "$out" | grep curl.hint | grep -q "✓" \
+    && { echo "  PASS: ✓ shown for NODOWNLOAD hint"; (( PASS++ )); } \
+    || { echo "  FAIL: ✓ missing"; echo "$out" | grep curl.hint | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T68 check"); }
+
+# ── T69: -l NoDL blank when no NODOWNLOAD ────────────────────────────────────
+echo ""
+echo "T69: -l NoDL column blank when no NODOWNLOAD"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+out=$(run_mkhint -l 2>&1)
+echo "$out" | grep curl.hint | grep -q "✓" \
+    && { echo "  FAIL: ✓ shown without NODOWNLOAD"; (( FAIL++ )); ERRORS+=("T69 check"); } \
+    || { echo "  PASS: no ✓ without NODOWNLOAD"; (( PASS++ )); }
+
 # ── T65: mkhint -v prints tool version ───────────────────────────────────────
 echo ""
 echo "T65: -v prints 'mkhint <version>' and exits 0"

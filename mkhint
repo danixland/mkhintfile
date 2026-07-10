@@ -120,7 +120,7 @@ list_hint_files() {
 
     echo "Hint files in: $HINT_DIR"
     echo "======================================================="
-    printf "%-40s  %22s  %22s  %-20s  %-6s  %s\n" "File" "HintVer" "SBOVer" "Category" "DelReq" "Created"
+    printf "%-40s  %22s  %22s  %-20s  %-6s  %-5s  %s\n" "File" "HintVer" "SBOVer" "Category" "DelReq" "NoDL" "Created"
     echo "-------------------------------------------------------"
 
     MATCHED_PKGS=()
@@ -132,6 +132,8 @@ list_hint_files() {
             [[ -z "$VER" ]] && continue
             local delreq=""
             grep -q '^DELREQUIRES="..*"' "$file" && delreq="✓"
+            local nodl=""
+            grep -qi '^NODOWNLOAD=yes' "$file" && nodl="✓"
             local name; name=$(basename "$file")
             local pkg="${name%.hint}"
             local info_file
@@ -144,13 +146,14 @@ list_hint_files() {
             fi
             local date; date=$(stat -c "%y" "$file" | cut -d'.' -f1)
             local dr; dr=$(_pad_glyph "$delreq" 6)
+            local nd; nd=$(_pad_glyph "$nodl" 5)
             local hv sv
             hv=$(printf "%22s" "$VER")
             sv=$(printf "%22s" "$SBO_VER")
             if [[ -n "$SBO_VER" && "$VER" == "$SBO_VER" ]]; then
                 # equal → whole row yellow
                 local row
-                row=$(printf "%-40s  %s  %s  %-20s  %s  %s" "$name" "$hv" "$sv" "$category" "$dr" "$date")
+                row=$(printf "%-40s  %s  %s  %-20s  %s  %s  %s" "$name" "$hv" "$sv" "$category" "$dr" "$nd" "$date")
                 printf "%s%s%s\n" "$c_on" "$row" "$c_off"
                 MATCHED_PKGS+=("$pkg")
                 matched=$((matched + 1))
@@ -165,7 +168,7 @@ list_hint_files() {
                         sv="${g_on}${sv}${c_off}"
                     fi
                 fi
-                printf "%-40s  %s  %s  %-20s  %s  %s\n" "$name" "$hv" "$sv" "$category" "$dr" "$date"
+                printf "%-40s  %s  %s  %-20s  %s  %s  %s\n" "$name" "$hv" "$sv" "$category" "$dr" "$nd" "$date"
             fi
             count=$((count + 1))
         fi

@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- `--list`/`-l`: new `NoDL` column showing `✓` when a hint carries
+  `NODOWNLOAD=yes`, alongside the existing `DelReq` column.
+- Bash completion: `-V`/`--set-version` now completes from the SBo `.info`
+  VERSION when `-n`/`--new <pkg>` is on the line (previously only from the
+  hint's VERSION via `-f`/`--hintfile`).
+
 ### Changed
 - `nvtake` timing: nvchecker's `oldver` is now synced (via `nvtake`) only when
   you confirm the slackrepo prompt, per package, just before slackrepo runs —

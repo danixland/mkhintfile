@@ -74,8 +74,9 @@ phantom dependency, ensure its hint carries the matching `DELREQUIRES`.
 Idempotent. Mutually exclusive with **-V**, **-f**, **-n**.
 
 **\--list**, **-l** \[*FILE*...]
-: List all hint files with their hint version, `.info` version, and a
-`DelReq` marker. With package names, show each hint side by side with its
+: List all hint files with their hint version, `.info` version, a
+`DelReq` marker (populated `DELREQUIRES`), and a `NoDL` marker
+(`NODOWNLOAD=yes`). With package names, show each hint side by side with its
 `.info` instead of the table.
 
 **\--review**, **-R** \[*FILE*...]
