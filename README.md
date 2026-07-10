@@ -6,21 +6,27 @@ Manage hint files for slackrepo scripts. Updates version strings and download ch
 
 ## Installation
 
-### Script
+The `install.sh` script installs the binary, bash completion, and man page. Run
+it as root for a system-wide install, or as a normal user for a user-only
+install under `~/.local`:
+
+```bash
+./install.sh              # system-wide (as root) or user-only (as normal user)
+./install.sh uninstall    # remove the installed files
+```
+
+System paths: `/usr/local/bin/mkhint`, `/usr/local/man/man1/mkhint.1.gz`, and
+the bash completion in whichever of `/etc/bash_completion.d` or
+`/etc/bash-completion.d` exists (defaulting to the underscore form on
+Slackware). User paths follow XDG: `~/.local/bin`, `~/.local/share/man/man1`,
+and `~/.local/share/bash-completion/completions`. On Slackware `~/.local/bin` is
+not on `PATH` by default; the script warns when the install dir is unreachable.
+
+To install by hand instead:
 
 ```bash
 sudo cp mkhint /usr/local/bin/mkhint
-```
-
-### Bash Completion
-
-```bash
-sudo cp mkhint.bash-completion /etc/bash-completion.d/mkhint
-```
-
-### Man Page
-
-```bash
+sudo cp mkhint.bash-completion /etc/bash_completion.d/mkhint
 sudo cp mkhint.1.gz /usr/local/man/man1/mkhint.1.gz
 ```
 
@@ -35,9 +41,21 @@ pandoc mkhint.1.md -s -t man -o mkhint.1 && gzip -9 -n -f mkhint.1
 
 ### Dependencies
 
-- `wget` — for downloading archives and calculating checksums
-- `nvchecker` — for checking upstream versions (provides `nvchecker` and `nvtake`)
-- `jq` — for parsing version check results
+**Required:**
+
+- `slackrepo` — the tool whose hint files `mkhint` manages; dispatched after a version bump
+- `wget` — downloading archives and calculating checksums
+- `nvchecker` — checking upstream versions (provides both `nvchecker` and `nvtake`)
+- `jq` — parsing version-check results and GitHub API responses (bundled-dep reconcile)
+
+**Optional (features degrade gracefully if absent):**
+
+- `git` — side-by-side diffs in `--review`, `--list <pkg>`, and `--info`; falls back to `diff -y`
+- `less` — paging the README in `--info` when it is taller than the terminal
+- `tput` — TTY color detection; output is plain without it
+
+`perl`, `awk`, `sed`, `grep`, `md5sum`, and other coreutils are part of a base
+Slackware install and are assumed present.
 
 ### Configuration
 

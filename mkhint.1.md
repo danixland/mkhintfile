@@ -41,6 +41,14 @@ After a version-changing update, **mkhint** dispatches **slackrepo** for the
 affected package: `slackrepo update` if the package is already built in the
 package repository, `slackrepo build` if it is not.
 
+# REQUIREMENTS
+
+Required: **slackrepo**, **wget**, **nvchecker** (which also provides
+**nvtake**), and **jq**. Optional: **git** (nicer side-by-side diffs, falls back
+to `diff -y`), **less** (paging in **\--info**), and **tput** (color on a TTY).
+Coreutils (**perl**, **awk**, **sed**, **grep**, **md5sum**) are assumed from a
+base Slackware install.
+
 # OPTIONS
 
 **\--set-version**, **-V** *VERSION*
