@@ -1470,6 +1470,98 @@ echo "$out" | grep curl.hint | grep -q "✓" \
     && { echo "  FAIL: ✓ shown without NODOWNLOAD"; (( FAIL++ )); ERRORS+=("T69 check"); } \
     || { echo "  PASS: no ✓ without NODOWNLOAD"; (( PASS++ )); }
 
+# ── T70: repo_version helper parses txz basename ─────────────────────────────
+echo ""
+echo "T70: repo_version extracts version from newest built .txz"
+rm -rf "$MOCK_PKGS"
+seed_pkg network curl 8.4.0
+seed_pkg network curl 8.6.0
+ver=$(run_mkhint_fn repo_version curl 2>/dev/null)
+[[ "$ver" == "8.6.0" ]] \
+    && { echo "  PASS: repo_version = 8.6.0"; (( PASS++ )); } \
+    || { echo "  FAIL: repo_version got '$ver'"; (( FAIL++ )); ERRORS+=("T70"); }
+rm -rf "$MOCK_PKGS"
+
+# ── T71: -l RepoVer column hidden when no packages ───────────────────────────
+echo ""
+echo "T71: -l hides RepoVer column when PACKAGES_DIR is empty"
+rm -rf "$MOCK_PKGS"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+out=$(run_mkhint -l 2>&1)
+echo "$out" | grep -q "RepoVer" \
+    && { echo "  FAIL: RepoVer header shown with no packages"; (( FAIL++ )); ERRORS+=("T71"); } \
+    || { echo "  PASS: RepoVer column hidden"; (( PASS++ )); }
+
+# ── T72: -l RepoVer shown, built pkg behind → magenta ────────────────────────
+echo ""
+echo "T72: -l RepoVer magenta when built pkg behind newest source"
+rm -rf "$MOCK_PKGS"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# hint 8.6.0 (newest source), .info 8.5.0, built pkg 8.4.0 → repo behind
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.6.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.6.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+seed_pkg network curl 8.4.0
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
+echo "$out" | grep -q "RepoVer" \
+    && { echo "  PASS: RepoVer header shown"; (( PASS++ )); } \
+    || { echo "  FAIL: RepoVer header missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T72 header"); }
+# magenta (ESC[35m) before the repo version 8.4.0
+echo "$out" | grep curl.hint | grep -q $'\033\[35m.*8\.4\.0' \
+    && { echo "  PASS: RepoVer magenta when behind"; (( PASS++ )); } \
+    || { echo "  FAIL: RepoVer not magenta"; echo "$out" | grep curl.hint | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T72 magenta"); }
+rm -rf "$MOCK_PKGS"
+
+# ── T73: -l RepoVer plain when built pkg current ─────────────────────────────
+echo ""
+echo "T73: -l RepoVer plain when built pkg == newest source"
+rm -rf "$MOCK_PKGS"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# hint 8.6.0, built pkg 8.6.0 → repo current, no magenta
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.6.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.6.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+seed_pkg network curl 8.6.0
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
+echo "$out" | grep curl.hint | grep -q $'\033\[35m' \
+    && { echo "  FAIL: RepoVer magenta when current"; echo "$out" | grep curl.hint | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T73 magenta"); } \
+    || { echo "  PASS: RepoVer plain when current"; (( PASS++ )); }
+rm -rf "$MOCK_PKGS"
+
+# ── T74: -l yellow row, built pkg behind → magenta RepoVer inside row ─────────
+echo ""
+echo "T74: -l matched (yellow) row still shows magenta RepoVer when behind"
+rm -rf "$MOCK_PKGS"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+# hint 8.5.0 == .info 8.5.0 (yellow row), built pkg 8.4.0 behind
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+DOWNLOAD="https://curl.se/download/curl-8.5.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+EOF
+seed_pkg network curl 8.4.0
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint -l 2>&1)
+echo "$out" | grep curl.hint | grep -q $'\033\[33m' \
+    && { echo "  PASS: matched row yellow"; (( PASS++ )); } \
+    || { echo "  FAIL: matched row not yellow"; echo "$out" | grep curl.hint | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T74 yellow"); }
+echo "$out" | grep curl.hint | grep -q $'\033\[35m.*8\.4\.0' \
+    && { echo "  PASS: RepoVer magenta inside yellow row"; (( PASS++ )); } \
+    || { echo "  FAIL: RepoVer magenta lost in yellow row"; echo "$out" | grep curl.hint | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T74 magenta"); }
+rm -rf "$MOCK_PKGS"
+
 # ── T65: mkhint -v prints tool version ───────────────────────────────────────
 echo ""
 echo "T65: -v prints 'mkhint <version>' and exits 0"

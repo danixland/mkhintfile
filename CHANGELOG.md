@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-07-10
+
+### Added
+- `--list`/`-l`: new `RepoVer` column showing the newest version actually built
+  in `PACKAGES_DIR`. Auto opt-in: the column appears only when at least one
+  package is built, and is hidden entirely otherwise. It is coloured magenta
+  when the built version lags the newer of the hint/`.info` version, so you can
+  spot hints that have been bumped but not yet rebuilt.
+- `install.sh`: install or uninstall the binary, bash completion, and man page.
+  Runs system-wide as root or user-only (XDG `~/.local`) as a normal user;
+  detects the bash-completion dir and warns when the install dir is off `PATH`.
+
 ## [1.3.1] - 2026-07-10
 
 ### Added

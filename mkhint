@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.3.1"
+readonly MKHINT_VERSION="1.4.0"
 
 # Variables
 VERSION=""
@@ -109,18 +109,28 @@ list_hint_files() {
     fi
 
     # Color only on a TTY, or when forced for tests. tput optional.
-    local c_on="" c_off="" g_on=""
+    # c_on=yellow (matched row), g_on=green (newer source side),
+    # m_on=magenta (built package behind newest source).
+    local c_on="" c_off="" g_on="" m_on=""
     if [[ -n "$MKHINT_FORCE_COLOR" || -t 1 ]]; then
         if command -v tput &>/dev/null && tput setaf 3 &>/dev/null; then
-            c_on=$(tput setaf 3); g_on=$(tput setaf 2); c_off=$(tput sgr0)
+            c_on=$(tput setaf 3); g_on=$(tput setaf 2); m_on=$(tput setaf 5); c_off=$(tput sgr0)
         else
-            c_on=$'\033[33m'; g_on=$'\033[32m'; c_off=$'\033[0m'
+            c_on=$'\033[33m'; g_on=$'\033[32m'; m_on=$'\033[35m'; c_off=$'\033[0m'
         fi
     fi
 
+    # RepoVer column is auto opt-in: shown only when PACKAGES_DIR has packages.
+    local show_repo=""
+    repo_has_packages && show_repo=1
+
     echo "Hint files in: $HINT_DIR"
     echo "======================================================="
-    printf "%-40s  %22s  %22s  %-20s  %-6s  %-5s  %s\n" "File" "HintVer" "SBOVer" "Category" "DelReq" "NoDL" "Created"
+    if [[ -n "$show_repo" ]]; then
+        printf "%-40s  %22s  %22s  %22s  %-20s  %-6s  %-5s  %s\n" "File" "HintVer" "SBOVer" "RepoVer" "Category" "DelReq" "NoDL" "Created"
+    else
+        printf "%-40s  %22s  %22s  %-20s  %-6s  %-5s  %s\n" "File" "HintVer" "SBOVer" "Category" "DelReq" "NoDL" "Created"
+    fi
     echo "-------------------------------------------------------"
 
     MATCHED_PKGS=()
@@ -150,11 +160,36 @@ list_hint_files() {
             local hv sv
             hv=$(printf "%22s" "$VER")
             sv=$(printf "%22s" "$SBO_VER")
+
+            # RepoVer cell (only when the column is on). Compare the newest of
+            # {hint, SBo} against the built version; magenta when the built
+            # package is behind, plain otherwise or when no package is built.
+            local rv="" rv_cell=""
+            if [[ -n "$show_repo" ]]; then
+                local REPO_VER; REPO_VER=$(repo_version "$pkg")
+                rv=$(printf "%22s" "$REPO_VER")
+                if [[ -n "$REPO_VER" ]]; then
+                    local newest_src
+                    newest_src=$(printf '%s\n%s\n' "$VER" "$SBO_VER" | sort -V | tail -1)
+                    if [[ "$newest_src" != "$REPO_VER" && \
+                          "$(printf '%s\n%s\n' "$newest_src" "$REPO_VER" | sort -V | tail -1)" == "$newest_src" ]]; then
+                        rv="${m_on}${rv}${c_off}"   # built pkg behind newest source
+                    fi
+                fi
+                rv_cell="  $rv"
+            fi
+
             if [[ -n "$SBO_VER" && "$VER" == "$SBO_VER" ]]; then
-                # equal → whole row yellow
-                local row
-                row=$(printf "%-40s  %s  %s  %-20s  %s  %s  %s" "$name" "$hv" "$sv" "$category" "$dr" "$nd" "$date")
-                printf "%s%s%s\n" "$c_on" "$row" "$c_off"
+                # equal → whole row yellow, but the RepoVer cell keeps its own
+                # color (close yellow before it, reopen after) so magenta shows.
+                local lead trail
+                lead=$(printf "%-40s  %s  %s" "$name" "$hv" "$sv")
+                trail=$(printf "%-20s  %s  %s  %s" "$category" "$dr" "$nd" "$date")
+                if [[ -n "$show_repo" ]]; then
+                    printf "%s%s%s  %s  %s%s%s\n" "$c_on" "$lead" "$c_off" "$rv" "$c_on" "$trail" "$c_off"
+                else
+                    printf "%s%s  %s%s\n" "$c_on" "$lead" "$trail" "$c_off"
+                fi
                 MATCHED_PKGS+=("$pkg")
                 matched=$((matched + 1))
             else
@@ -168,7 +203,7 @@ list_hint_files() {
                         sv="${g_on}${sv}${c_off}"
                     fi
                 fi
-                printf "%-40s  %s  %s  %-20s  %s  %s  %s\n" "$name" "$hv" "$sv" "$category" "$dr" "$nd" "$date"
+                printf "%-40s  %s  %s%s  %-20s  %s  %s  %s\n" "$name" "$hv" "$sv" "$rv_cell" "$category" "$dr" "$nd" "$date"
             fi
             count=$((count + 1))
         fi
@@ -181,7 +216,11 @@ list_hint_files() {
     echo "======================================================="
     echo "Total: $count file(s)"
     if [[ $matched -gt 0 && -n "$c_on" ]]; then
-        echo "(yellow row = versions match; green = newer side)"
+        if [[ -n "$show_repo" ]]; then
+            echo "(yellow row = versions match; green = newer side; magenta = built pkg behind)"
+        else
+            echo "(yellow row = versions match; green = newer side)"
+        fi
     fi
 }
 
@@ -1546,6 +1585,26 @@ update_hint_file() {
 pkg_in_repo() {
     local pkg="$1"
     compgen -G "${PACKAGES_DIR%/}/*/${pkg}/${pkg}-*.txz" >/dev/null 2>&1
+}
+
+# Echo the version of the newest built package for <pkg> in PACKAGES_DIR, or
+# nothing if none is present. Parses the .txz basename: strips the "<pkg>-"
+# prefix and the "-<arch>-<build>.txz" suffix (Slackware naming).
+repo_version() {
+    local pkg="$1" newest base ver
+    newest=$(compgen -G "${PACKAGES_DIR%/}/*/${pkg}/${pkg}-*.txz" 2>/dev/null \
+        | sort -V | tail -1)
+    [[ -z "$newest" ]] && return 0
+    base=$(basename "$newest")
+    ver="${base#"${pkg}-"}"          # drop leading "<pkg>-"
+    ver="${ver%-*-*.txz}"            # drop trailing "-<arch>-<build>.txz"
+    printf '%s' "$ver"
+}
+
+# True when PACKAGES_DIR holds at least one built package. Used by --list to
+# decide whether to show the RepoVer column at all (auto opt-in).
+repo_has_packages() {
+    compgen -G "${PACKAGES_DIR%/}/*/*/*.txz" >/dev/null 2>&1
 }
 
 # Prompt to run `slackrepo <action> <pkgs...>`; no-op on empty list.

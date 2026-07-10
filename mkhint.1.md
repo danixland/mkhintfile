@@ -84,8 +84,11 @@ Idempotent. Mutually exclusive with **-V**, **-f**, **-n**.
 **\--list**, **-l** \[*FILE*...]
 : List all hint files with their hint version, `.info` version, a
 `DelReq` marker (populated `DELREQUIRES`), and a `NoDL` marker
-(`NODOWNLOAD=yes`). With package names, show each hint side by side with its
-`.info` instead of the table.
+(`NODOWNLOAD=yes`). When `PACKAGES_DIR` holds at least one built package, an
+extra `RepoVer` column is shown (auto opt-in) with the newest built version,
+coloured magenta when it lags the newer of the hint/`.info` version. With
+package names, show each hint side by side with its `.info` instead of the
+table.
 
 **\--review**, **-R** \[*FILE*...]
 : Review hints. With no arguments, iterate the hints whose version matches the
