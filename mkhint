@@ -45,7 +45,7 @@ if [[ ! -d $TMP_DIR ]]; then
     mkdir $TMP_DIR
 fi
 
-readonly MKHINT_VERSION="1.2.6"
+readonly MKHINT_VERSION="1.3.0"
 
 # Variables
 VERSION=""

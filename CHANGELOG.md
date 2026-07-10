@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-07-10
+
+### Added
+- SHA-mode bundled-dep reconcile (`--check`/`-C`, `--force`, `--new`, `--hintfile`).
+  Bundle manifests now carry a 3-field `<pkg> <mode> <rest>` format where mode is
+  `url` (neovim-style flat `deps.txt`, version-based) or `sha` (openvino-style git
+  submodules pinned by full 40-char commit SHA in `archive/<sha>/` DOWNLOAD lines).
+  For sha mode mkhint fetches each submodule's pinned SHA from the GitHub contents
+  API (`type=submodule` → `.sha`), matches the hint `DOWNLOAD` line by owner/repo,
+  and rewrites + re-md5s any line whose SHA drifted. The report lists each dep as
+  `<name> <sha7> (current)` or `<name> <old7> -> <new7>`. Token reused from
+  nvchecker's keyfile when present (→ 5000/h), else anonymous.
+- Job B submodule inventory (`detect_set_drift`): on a sha-mode bump or `--force`,
+  diffs `.gitmodules` at the old and new refs and prints a full roster of every
+  submodule tagged `bundled`/`(ignored)` with change glyphs, raising `ACTION` on a
+  bundled dep removed upstream and `review` on a new unbundled one. FYI only, never
+  edits the bundle set.
+
 ## [1.2.6] - 2026-07-09
 
 ### Added
