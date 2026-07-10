@@ -49,18 +49,27 @@ _mkhintfile_completions() {
             COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
             ;;
         --set-version|-V)
-            local pkg="" i
+            # Suggest a version: with -f/--hintfile <pkg> pull it from the
+            # hint's VERSION; with -n/--new <pkg> pull it from the SBo .info.
+            local pkg="" src="" i
             for (( i=1; i<${#COMP_WORDS[@]}-1; i++ )); do
-                if [[ "${COMP_WORDS[i]}" == "--hintfile" || "${COMP_WORDS[i]}" == "-f" ]]; then
-                    pkg="${COMP_WORDS[i+1]}"
-                    break
-                fi
+                case "${COMP_WORDS[i]}" in
+                    --hintfile|-f) pkg="${COMP_WORDS[i+1]}"; src=hint; break ;;
+                    --new|-n)      pkg="${COMP_WORDS[i+1]}"; src=info; break ;;
+                esac
             done
             if [[ -n "$pkg" ]]; then
-                local hint_file="$hint_dir/${pkg}.hint"
-                if [[ -f "$hint_file" ]]; then
-                    local ver
-                    ver=$(grep -m1 '^VERSION=' "$hint_file" | cut -d= -f2 | tr -d '"')
+                local ver="" f
+                if [[ "$src" == hint ]]; then
+                    f="$hint_dir/${pkg}.hint"
+                else
+                    # .info lives at REPO_DIR/<category>/<pkg>/<pkg>.info
+                    for f in "$repo_dir"/*/"$pkg"/"$pkg".info; do
+                        [[ -f "$f" ]] && break
+                    done
+                fi
+                if [[ -f "$f" ]]; then
+                    ver=$(grep -m1 '^VERSION=' "$f" | cut -d= -f2 | tr -d '"')
                     [[ -n "$ver" ]] && COMPREPLY=($(compgen -W "$ver" -- "$cur"))
                 fi
             fi
