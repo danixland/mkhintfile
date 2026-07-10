@@ -180,13 +180,13 @@ When creating a new hint file with `--new`, mkhint automatically appends an nvch
 mkhint --new mypackage            # adds [mypackage] section to nvchecker config
 ```
 
-When updating an existing hint file with `--hintfile` but without `-v`, mkhint queries nvchecker for the latest version, shows you the current and latest versions, and prompts to accept the latest, type a different version, or decline. After accepting an update, it runs `nvtake` to sync nvchecker's keyfile:
+When updating an existing hint file with `--hintfile` but without `-v`, mkhint queries nvchecker for the latest version, shows you the current and latest versions, and prompts to accept the latest, type a different version, or decline. After accepting, it updates the hint and prompts to run slackrepo; `nvtake` (which syncs nvchecker's keyfile) runs only when you confirm the slackrepo step, not on accept:
 
 ```bash
 mkhint --hintfile mypackage       # suggests latest version via nvchecker (no -V flag)
 ```
 
-Check one or more packages for upstream updates with `--check`. mkhint runs nvchecker for all (or named) hint files, reports outdated packages, prompts per-package to update, applies updates with `nvtake`, and finishes by prompting slackrepo for all updated packages:
+Check one or more packages for upstream updates with `--check`. mkhint runs nvchecker for all (or named) hint files, reports outdated packages, prompts per-package to update (rewriting the hint on confirm), and finishes by prompting slackrepo for all updated packages. `nvtake` runs per package only when you confirm the slackrepo prompt, just before slackrepo runs. So confirming slackrepo acknowledges the versions: if slackrepo is then stopped or fails, rerun it and nvchecker won't re-report those updates. Declining slackrepo leaves the hint bumped but the update re-reported next run:
 
 ```bash
 mkhint --check                    # check all hints for upstream updates

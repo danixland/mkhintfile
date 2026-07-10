@@ -707,8 +707,8 @@ DOWNLOAD_x86_64=""
 MD5SUM_x86_64=""
 EOF
 rm -f "$MOCK_BASE/nvtake.log"
-# blank = accept latest (8.9.0 from keyfile); n = skip slackrepo
-run_mkhint -f curl < <(printf '\nn\n')
+# blank = accept latest (8.9.0 from keyfile); Y = run slackrepo (nvtake fires on confirm)
+run_mkhint -f curl < <(printf '\nY\n')
 assert_contains "VERSION set to latest"   "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
 assert_contains "URL has latest version"  "$MOCK_HINT/curl.hint" 'curl-8.9.0'
 assert_file_exists "nvtake was called"    "$MOCK_BASE/nvtake.log"
@@ -762,7 +762,8 @@ MD5SUM_x86_64=""
 EOF
 rm -f "$MOCK_HINT/clion.hint" "$MOCK_HINT/protoc-gen-go-grpc.hint" "$MOCK_HINT"/*.bak 2>/dev/null
 rm -f "$MOCK_BASE/nvtake.log"
-run_mkhint -C curl < <(printf 'Y\nn\n')
+# Y = confirm update; Y = run slackrepo (nvtake fires on slackrepo confirm)
+run_mkhint -C curl < <(printf 'Y\nY\n')
 assert_contains "curl updated to 8.9.0"   "$MOCK_HINT/curl.hint" 'VERSION="8.9.0"'
 assert_file_exists "nvtake called"        "$MOCK_BASE/nvtake.log"
 

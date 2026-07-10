@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- `nvtake` timing: nvchecker's `oldver` is now synced (via `nvtake`) only when
+  you confirm the slackrepo prompt, per package, just before slackrepo runs —
+  moved out of the hint-rewrite step in `--check` and out of the version-accept
+  step in `--hintfile`. Confirming slackrepo acknowledges the versions; if
+  slackrepo is then stopped or fails, rerun it without nvchecker re-reporting
+  already-committed versions. Declining slackrepo leaves the hint bumped but the
+  update re-reported next run. Fixes the stuck state where interrupting a run
+  between hint-rewrite and slackrepo left `oldver` behind the hint, so nvchecker
+  logged a phantom "updated" line every subsequent `--check`.
+
 ## [1.3.0] - 2026-07-10
 
 ### Added

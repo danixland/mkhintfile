@@ -1553,6 +1553,11 @@ run_slackrepo() {
     read -r -p "Run 'slackrepo $action $*'? [Y/n] " answer
     answer="${answer:-Y}"
     if [[ "$answer" =~ ^[Yy]$ ]]; then
+        # nvtake on confirm, before slackrepo runs: saying yes acknowledges the
+        # new versions. If slackrepo is then stopped or fails, just rerun it —
+        # nvchecker won't nag about versions already committed to the hints.
+        local p
+        for p in "$@"; do nvtake -c "$NVCHECKER_CONFIG" "$p" >&2 || true; done
         slackrepo "$action" "$@"
     fi
 }
@@ -1726,7 +1731,6 @@ check_updates() {
             answer="${answer:-Y}"
             if [[ "$answer" =~ ^[Yy]$ ]]; then
                 update_hint_file "$p" "${outdated_new[$i]}"
-                nvtake -c "$NVCHECKER_CONFIG" "$p" >&2 || true
                 updated+=("$p")
             fi
         done
@@ -1961,12 +1965,8 @@ main() {
             if [[ -z "$VERSION" ]]; then
                 check_nvchecker
                 VERSION=$(suggest_version "$HINT_FILE") || { echo "Aborted." >&2; exit 0; }
-                check_nvchecker_take=1
             fi
             update_hint_file "$HINT_FILE" "$VERSION"
-            if [[ "${check_nvchecker_take:-0}" -eq 1 ]]; then
-                nvtake -c "$NVCHECKER_CONFIG" "$HINT_FILE" >&2 || true
-            fi
 
             load_bundle_manifests
             local _bm_pkg="${HINT_FILE%.hint}"
