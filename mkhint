@@ -1050,6 +1050,7 @@ create_new_hint_file() {
                 if [[ "$old_version" == *_* || "$VERSION" == *_* ]]; then
                     sed -i "s/${old_version//_/-}/${VERSION//_/-}/g" "$normalized_file"
                 fi
+                _swap_dotless_url_version "$old_version" "$VERSION" "$normalized_file"
                 update_checksums "$normalized_file"
             fi
 
@@ -1696,6 +1697,17 @@ _process_download_var() {
 }
 
 # Update existing hint file
+# Some upstreams name tarballs by a dotless build number while the SlackBuild
+# VERSION is dotted (sublime_text: VERSION 4.2.00, URL build_4200), so the
+# plain swap misses the URL and the md5 is recomputed for the old tarball.
+# Also bump the dotless form, only inside URLs and only as a whole number,
+# so md5 hex and unrelated digits are left alone.
+_swap_dotless_url_version() {
+    local old="${1//./}" new="${2//./}" file="$3"
+    [[ "$1" == *.* && "$old" != "$new" ]] || return 0
+    O="$old" N="$new" perl -pi -e 's{(://[^\s"]*?)(?<!\d)\Q$ENV{O}\E(?!\d)}{$1$ENV{N}}g' "$file"
+}
+
 update_hint_file() {
     cd "$HINT_DIR"
     local file="$1"
@@ -1730,6 +1742,7 @@ update_hint_file() {
     if [[ "$old_version" == *_* || "$new_version" == *_* ]]; then
         sed -i "s/${old_version//_/-}/${new_version//_/-}/g" "$normalized_file"
     fi
+    _swap_dotless_url_version "$old_version" "$new_version" "$normalized_file"
 
     # For manifest-listed packages, skip the continuation-URL prompt — Phase 2
     # (reconcile_bundle_deps) rewrites those lines from the upstream manifest.

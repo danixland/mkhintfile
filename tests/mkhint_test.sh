@@ -542,6 +542,22 @@ assert_contains       "URL updated"              "$MOCK_HINT/curl.hint" 'curl-8.
 assert_not_contains   "MD5SUM updated"           "$MOCK_HINT/curl.hint" 'abc123def456'
 assert_file_exists    "backup created"           "$MOCK_HINT/curl.hint.bak"
 
+# ── T93: dotless build number in URL (sublime_text 4.2.00 ↔ build 4200) ───────
+echo ""
+echo "T93: --hintfile -V 4.2.15 → URL build_4200 bumped to build_4215"
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="4.2.00"
+DOWNLOAD="UNSUPPORTED"
+MD5SUM=""
+DOWNLOAD_x86_64="https://download.example.org/app_build_4200_x64.tar.xz"
+MD5SUM_x86_64="4200aaaabbbbccccddddeeeeffff0000"
+EOF
+run_mkhint -f curl -V 4.2.15
+assert_contains       "VERSION updated"          "$MOCK_HINT/curl.hint" 'VERSION="4.2.15"'
+assert_contains       "URL build bumped"         "$MOCK_HINT/curl.hint" 'app_build_4215_x64'
+assert_not_contains   "old md5 gone"             "$MOCK_HINT/curl.hint" '4200aaaa'
+assert_not_contains   "md5 not dotless-swapped"  "$MOCK_HINT/curl.hint" '4215aaaa'
+
 # ── T7: --hintfile -v -N → version + md5 updated + NODOWNLOAD ─────────────────
 echo ""
 echo "T7: --hintfile -v -N → version + md5 + NODOWNLOAD=yes"

@@ -159,12 +159,13 @@ Test coverage:
 | T90 | `--versions` multiple packages — both shown; no args exit 1 |
 | T91 | `--versions` with nvchecker section — Upstream shown, green when newest |
 | T92 | `--versions` no nvchecker section — note printed, exit 0 |
+| T93 | `-f -V 4.2.15` on hint `4.2.00` with URL `build_4200` — URL bumped to `build_4215`, md5 untouched by the swap |
 
 When adding new features, add a corresponding test case to `tests/mkhint_test.sh`.
 
 ## Key Behaviors
 
-- `--hintfile` update: backs up to `.bak`, replaces old version string globally via `sed`, re-downloads both URLs to recalculate MD5 checksums. Skips download if value is `UNSUPPORTED` or `UNTESTED`. After a successful update it dispatches slackrepo for the single package via `prompt_slackrepo`, which uses `pkg_in_repo` (glob `PACKAGES_DIR/*/<pkg>/<pkg>-*.txz`) to choose `slackrepo update` for a built package or `slackrepo build` for an absent one, both run through `run_slackrepo`.
+- `--hintfile` update: backs up to `.bak`, replaces old version string globally via `sed` (plus the `_`→`-` form, and via `_swap_dotless_url_version` the dotless form inside URLs only, as a whole number: `4.2.00`→`4200` for sublime_text-style build-number tarballs), re-downloads both URLs to recalculate MD5 checksums. Skips download if value is `UNSUPPORTED` or `UNTESTED`. After a successful update it dispatches slackrepo for the single package via `prompt_slackrepo`, which uses `pkg_in_repo` (glob `PACKAGES_DIR/*/<pkg>/<pkg>-*.txz`) to choose `slackrepo update` for a built package or `slackrepo build` for an absent one, both run through `run_slackrepo`.
 - `--new` with existing `.info`: copies `.info` as template, strips `PRGNAM`, `HOMEPAGE`, `MAINTAINER`, `EMAIL`, comments out `REQUIRES`, sets `ARCH="x86_64"`. Keeps `VERSION` from `.info`. If `-V` given, updates version string and recalculates checksums. Also appends an nvchecker `[section]` to the config via `add_nvchecker_section`.
 - `add_nvchecker_section` autodetection: `_detect_nvchecker_source` recognizes github, gitlab, bitbucket, gitea, codeberg, and pagure owner/repo URLs plus the pypi, npm, gems, crates.io (`cratesio`), cpan, hackage, packagist, and cran registries, else leaves a commented stub. Github gets `use_latest_release = true` with commented `use_max_tag`/`prefix = "v"` fallbacks; the other forges get `use_max_tag = true` plus a commented `# prefix = "v"`; registries use the package name parsed from the URL via `_registry_name_from_url`, falling back to `PRGNAM` when no host-specific pattern matches. Either way, the managed stanza (freshly added or already present) is echoed fenced on stdout via `_extract_nvchecker_section`.
 - `--new` when hint already exists: backs up old, creates empty skeleton.

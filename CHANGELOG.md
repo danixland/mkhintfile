@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Version bumps now also rewrite the dotless form of a dotted version inside
+  download URLs (sublime_text: VERSION `4.2.00`, URL `build_4200`), so the
+  URL follows the bump and the md5 is computed for the new tarball.
+
 ### Added
 - `--strip-version`/`-S`: remove the version pin *and* the version-dependent
   download/checksum variables (`VERSION`, `DOWNLOAD`, `MD5SUM`, and their
