@@ -260,6 +260,59 @@ contains a phantom dep, it adds the matching `DELREQUIRES` for you.
 
 If the list file is missing or empty, both features are no-ops.
 
+### Strip the pinned version
+
+A hint's `VERSION="x.y.z"` line pins that package to a specific version. When the
+repository moves on, that pin goes stale even though the rest of the hint (a
+`DELREQUIRES`, a `NODOWNLOAD=yes`, a custom `ARCH`, …) is still wanted.
+`--strip-version` (`-S`) removes the version pin *and* the version-dependent
+download/checksum variables — `VERSION`, `DOWNLOAD`, `MD5SUM`, and their
+`_x86_64` variants — so slackrepo falls back to the repository's current version
+and its own download/checksum data, while every other edit is kept. Multiline
+(backslash-continued) `DOWNLOAD`/`MD5SUM` values are removed whole. With no
+arguments it sweeps every hint in the directory; with one or more package names
+it strips just those. A modified hint is backed up to `.bak` first, and a hint
+that already has none of those variables is left alone (no `.bak` churn):
+
+```bash
+mkhint --strip-version          # strip all hints
+mkhint -S                       # short form
+mkhint -S pkg1 pkg2             # strip just the named hints
+```
+
+`--strip-version` edits the hint file only; it does not consult the repository
+`.info` (there is no decision to make — unpinning always means dropping the
+pinned version and download data, regardless of what the `.info` currently
+holds). Because a stripped hint has no pinned version to compare, `--check`
+skips it (reporting `no VERSION in hint`) rather than offering an update.
+
+### Show all versions for a package
+
+`--versions` (long form only) reports every version mkhint can find for one or
+more package names and compares them with the same colour rules as `--list`:
+
+```bash
+mkhint --versions llama.cpp-vulkan
+mkhint --versions pkg1 pkg2
+```
+
+For each package it prints one line per known source, omitting any that are
+absent but still comparing the rest:
+
+- `SBo:` — the `VERSION` from the package's `.info` in the repository.
+- `Repo:` — the newest built `*.txz` version in `PACKAGES_DIR`.
+- `Hint:` — the hint file's `VERSION` (if a hint exists).
+- `Upstream:` — the latest version from nvchecker, when the package has a
+  `[pkg]` section in the nvchecker config. A targeted `nvchecker -e` refresh
+  runs first for a single package (a full scan for several). With no section,
+  the upstream check is skipped and a hint to run `mkhint -C` or
+  `mkhint -n <pkg>` is shown instead.
+
+Colour coding matches `--list`: the newest version is **green**, the built
+`Repo:` version is **magenta** when it is behind the newest, and every source is
+**yellow** when all known versions match. A single known source is shown plain.
+A package with no information at all exits 2.
+
 ### Help
 
 ```bash

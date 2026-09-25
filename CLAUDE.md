@@ -142,6 +142,23 @@ Test coverage:
 | T65 | `mkhint -v` prints `mkhint <version>`, exit 0 |
 | T66 | `mkhint --version` prints `mkhint <version>`, exit 0 |
 | T67 | `mkhint -V <ver> -n <pkg>` sets hint VERSION (rename works) |
+| T76 | `-S <pkg>` — `VERSION` + `DOWNLOAD`/`MD5SUM` (and `_x86_64`) removed, other vars + `.bak` preserved |
+| T84 | `-S` multiline `DOWNLOAD`/`MD5SUM` — whole blocks removed, no orphan continuation line |
+| T77 | `-S` on a hint with no version-pinned vars — no-op, no `.bak` churn |
+| T78 | `-S` no args — strips every hint that has a `VERSION` |
+| T79 | `-S pkg1 pkg2` — only the named hints stripped |
+| T80 | `-S <missing>` — exit 2 |
+| T81 | `-S` re-run — idempotent, no new `.bak` |
+| T82 | `-S` with `-V` — mutually-exclusive error, exit 1 |
+| T83 | `-C` skips a VERSION-less hint (no empty-pattern sed crash) |
+| T85 | `--versions` SBo/Repo/Hint equal — all three yellow |
+| T86 | `--versions` hint newest — hint green, built behind magenta, SBo plain |
+| T87 | `--versions` only SBo known — SBo line only |
+| T88 | `--versions` only hint known — Hint line only |
+| T89 | `--versions` unknown package — exit 2 |
+| T90 | `--versions` multiple packages — both shown; no args exit 1 |
+| T91 | `--versions` with nvchecker section — Upstream shown, green when newest |
+| T92 | `--versions` no nvchecker section — note printed, exit 0 |
 
 When adding new features, add a corresponding test case to `tests/mkhint_test.sh`.
 
@@ -158,6 +175,8 @@ When adding new features, add a corresponding test case to `tests/mkhint_test.sh
 - `--no-dl` / `-N`: downloads and recalculates checksums as normal, then appends `NODOWNLOAD=yes` after `MD5SUM_x86_64=`. Works with `--hintfile` or `--new`. Error if used alone.
 - `--fix-current` / `-F`: bulk sweep. Loads `PHANTOM_DEPS_FILE`, scans every `.info` in `REPO_DIR`, and for each package whose REQUIRES contains a phantom dep, ensures its hint carries the matching `DELREQUIRES`. No existing hint → create a minimal `DELREQUIRES="..."` file. Existing hint → back up to `.bak` and union the phantom deps into its `DELREQUIRES` line (dedup), leaving all other content untouched. Idempotent: if the deps are already present, the file is left alone and no `.bak` is written. No per-package prompts, safe under `set -e`. Mutually exclusive with `-V`/`-f`/`-n` (exit 1). Empty/missing list → "Nothing to do", exit 0. Helpers: `load_phantom_deps`, `phantom_deps_in_info`, `merge_delrequires`, `fix_current`.
 - `--new` phantom-dep hook: after commenting out REQUIRES, `create_new_hint_file` appends `DELREQUIRES="..."` for any phantom dep found in the `.info` REQUIRES. Same list as `--fix-current`.
+- `--strip-version` / `-S`: removes the version pin *and* the version-dependent variables — `VERSION`, `DOWNLOAD`, `MD5SUM`, and their `_x86_64` (or any arch-suffix) variants — from hint files (bulk over `HINT_DIR` with no args, or one-or-more named packages), so slackrepo falls back to the repository's current version and download/checksum data while every other modification (`DELREQUIRES`, `NODOWNLOAD`, `ARCH`, bundled-dep notes) is kept. Multiline backslash-continued `DOWNLOAD`/`MD5SUM` values are removed whole (no orphan continuation lines) via `_strip_version_vars` (a `perl -i -0pe` slurp substitution `s#^(VERSION|DOWNLOAD|MD5SUM)(_[A-Za-z0-9_-]*)?="[^"]*"\n##mg`). A modified hint is backed up to `.bak` first; a hint with none of those variables is left untouched (idempotent, no `.bak` churn — the "no version pin to strip (skipped)" notice only prints for named targets, so a batch re-run stays quiet). Missing named hint → exit 2. Mutually exclusive with `-V`/`-f`/`-n` (exit 1). Helpers: `strip_version`, `_strip_version_vars`. `-S` edits the hint only — no `.info` cross-check, because unpinning is unconditional (there is nothing to compare). Because a stripped hint has no pinned version, `--check`/`-C` now skips hints with no `VERSION` line (reporting `skip <pkg>: no VERSION in hint`) instead of offering an update — this also fixes the empty-pattern `sed` abort that `update_hint_file`'s global version swap (`s/${old_version}/.../g`) would otherwise hit when `old_version` is empty.
+- `--versions` (long-only): show and compare every known version for one or more package names — the SBo `.info` `VERSION`, the newest built `*.txz` in `PACKAGES_DIR` (via `repo_version`), the hint's `VERSION`, and the latest upstream version when an nvchecker `[pkg]` section exists. One line per present source (`SBo:`/`Repo:`/`Hint:`/`Upstream:`); absent sources are omitted but the remaining ones are still compared. Colours match `--list`: green = newest (via `sort -V` over `_normalize_version`-normalized values), magenta = built `Repo:` behind the newest, yellow = all present match, plain when only one source is present. Upstream is refreshed first (single pkg → `nvchecker -e`, two+ → one full scan) only when at least one package has a section; with no section the check is skipped and a non-interactive note suggests `mkhint -C` / `mkhint -n <pkg>`; a section with no keyfile result shows `(no nvchecker result)`. No information at all → exit 2; no args → exit 1; mutually exclusive with `-V`/`-f`/`-n`. Handler `show_versions` (sibling of `show_info`). A legend prints once when any package had ≥2 sources.
 - `--check` bundled-dep reconcile: `BUNDLE_MANIFEST_FILE` entries are 3-field,
   `<pkg> <mode> <rest>` (field 2 = `url` or `sha`; `bundle_mode <pkg>` reads it,
   the dispatcher `reconcile_bundle_deps` routes on it). `pkg_has_manifest` is true
@@ -262,8 +281,11 @@ retagged, so everything before the tag must be verified first):
    -9 -n -f mkhint.1` (commit the regenerated `mkhint.1.gz`).
 3. **Test.** `bash tests/mkhint_test.sh` must be all-pass. Every feature ships
    its own test case.
-4. **Deploy to the VM and smoke-test there BEFORE tagging.** `scp` the three
-   files to `buildsystem` (`/usr/local/bin/mkhint`,
+4. **Deploy to the VM and smoke-test there BEFORE tagging.** `./deploy.sh` does
+   this automatically (scp + chmod + md5 verification + `mkhint --version`
+   smoke check; `./deploy.sh <host>` or `DEPLOY_HOST=<host>` to override the
+   `buildsystem` alias). Manual equivalent: `scp` the three files to
+   `buildsystem` (`/usr/local/bin/mkhint`,
    `/etc/bash_completion.d/mkhint`, `/usr/local/man/man1/mkhint.1.gz`), confirm
    `mkhint --version` and md5s match local, and exercise the new feature on the
    VM's real data (it has real hints and built packages the mock suite can't

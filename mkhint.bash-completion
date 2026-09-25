@@ -14,7 +14,7 @@ _mkhintfile_completions() {
     hint_dir="${HINT_DIR:-$hint_dir}"
     repo_dir="${repo_dir%/}"; hint_dir="${hint_dir%/}"
 
-    local all_flags="--version -v --set-version -V --hintfile -f --new -n --list -l --review -R --clean -c --check -C --fix-current -F --delete -d --no-dl -N --info -i --force --help -h"
+    local all_flags="--version -v --set-version -V --hintfile -f --new -n --list -l --review -R --clean -c --check -C --fix-current -F --strip-version -S --versions --delete -d --no-dl -N --info -i --force --help -h"
 
     # -R/--review and -l/--list take any number of hint names; complete them repeatedly.
     local w in_review=""
@@ -31,7 +31,7 @@ _mkhintfile_completions() {
     fi
 
     case "$prev" in
-        --new|-n|--info|-i)
+        --new|-n|--info|-i|--versions)
             # Packages live at REPO_DIR/<category>/<pkg>/; complete the pkg dir
             # names. Strip the trailing slash and category prefix with param
             # expansion (no per-dir basename fork — the repo has thousands).
@@ -41,7 +41,7 @@ _mkhintfile_completions() {
             done
             COMPREPLY=($(compgen -W "${words[*]}" -- "$cur"))
             ;;
-        --hintfile|-f|--delete|-d|--check|-C)
+        --hintfile|-f|--delete|-d|--check|-C|--strip-version|-S)
             local -a words=()
             for f in "$hint_dir"/*.hint; do
                 [[ -f "$f" ]] && words+=("$(basename "${f%.hint}")")

@@ -12,6 +12,8 @@
 #   ./mkhint --clean                              Remove .bak files from HINT_DIR
 #   ./mkhint --no-dl --hintfile FILE              Update hint, skip downloads, add NODOWNLOAD=yes
 #   ./mkhint --no-dl --new FILE                   Create hint with NODOWNLOAD=yes
+#   ./mkhint --strip-version [FILE...]            Remove VERSION + DOWNLOAD/MD5SUM pin
+#   ./mkhint --versions PKG...                    Show and compare SBo/built/hint/upstream versions
 #   ./mkhint --help                               Show this help
 
 set -e
@@ -79,6 +81,8 @@ Options:
   --clean, -c              Remove all .bak files from HINT_DIR
   --check, -C [FILE...]    Check hints for upstream updates via nvchecker, update interactively
   --fix-current, -F        Add/merge DELREQUIRES for -current phantom deps across the whole repo
+  --strip-version, -S [FILE...]  Remove VERSION + DOWNLOAD/MD5SUM pin; no args = all hints, FILE... = named
+  --versions PKG...        Show and compare SBo/built/hint/upstream versions for a package
   --delete, -d FILE        Delete a hint file (and .bak if present)
   --no-dl, -N              Skip downloads; add NODOWNLOAD=yes to hint file (use with -f or -n)
   --info, -i FILE          Show category/program path and README for a package
@@ -470,6 +474,56 @@ fix_current() {
         (( count++ )) || true
     done < <(find "$REPO_DIR" -mindepth 2 -maxdepth 3 -name '*.info' | sort)
     echo "Done. $count package(s) with phantom deps."
+}
+
+# Remove the version-pinned variables (VERSION, DOWNLOAD, MD5SUM and their
+# arch-suffix variants like DOWNLOAD_x86_64) from a hint file. Multiline
+# backslash-continued values are removed whole, not just their first line.
+_strip_version_vars() {
+    local file="$1"
+    perl -i -0pe 's#^(VERSION|DOWNLOAD|MD5SUM)(_[A-Za-z0-9_-]*)?="[^"]*"\n##mg' "$file"
+}
+
+# Strip the version pin from hint files so slackrepo falls back to the
+# repository's current version. Removes VERSION plus the version-dependent
+# DOWNLOAD*/MD5SUM* variables; everything else (DELREQUIRES, NODOWNLOAD, ARCH,
+# bundled-dep notes, etc.) is kept. A modified hint is backed up to .bak first
+# (mkhint convention); a hint with none of those variables is left untouched.
+# Usage: strip_version [pkg...]   (no args = all *.hint in HINT_DIR)
+strip_version() {
+    local targets=()
+    if [[ $# -gt 0 ]]; then
+        targets=("$@")
+    else
+        local f b
+        for f in "$HINT_DIR"/*.hint; do
+            [[ -f "$f" ]] || continue
+            b=$(basename "$f"); targets+=("${b%.hint}")
+        done
+    fi
+
+    local pkg hint stripped=0 named=0
+    [[ $# -gt 0 ]] && named=1
+    for pkg in "${targets[@]}"; do
+        if [[ "$pkg" == *.hint ]]; then
+            hint="${HINT_DIR%/}/${pkg}"
+        else
+            hint="${HINT_DIR%/}/${pkg}.hint"
+        fi
+        if [[ ! -f "$hint" ]]; then
+            echo "Error: Hint file does not exist: $hint" >&2
+            exit 2
+        fi
+        if ! grep -qE '^(VERSION|DOWNLOAD|MD5SUM)' "$hint"; then
+            [[ $named -eq 1 ]] && echo "  ${pkg%.hint}: no version pin to strip (skipped)"
+            continue
+        fi
+        cp "$hint" "${hint}.bak"
+        _strip_version_vars "$hint"
+        echo "  ${pkg%.hint}: stripped VERSION + DOWNLOAD/MD5SUM"
+        (( stripped++ )) || true
+    done
+    echo "Done. $stripped hint(s) stripped."
 }
 
 # ── bundled-dep manifest handling ─────────────────────────────────────────────
@@ -1146,6 +1200,122 @@ show_info() {
     exit 0
 }
 
+# --versions: show every known version for one or more packages and compare them.
+# Sources: the SBo .info VERSION, the newest built package in PACKAGES_DIR, the
+# hint's VERSION, and (when an nvchecker [pkg] section exists) the latest
+# upstream version. A source with no version is omitted from the version list,
+# but the remaining ones are still compared. Colors match --list: green =
+# newest, magenta = built package behind, yellow = all match.
+show_versions() {
+    if [[ $# -eq 0 ]]; then
+        echo "Error: --versions requires at least one package name" >&2
+        exit 1
+    fi
+    local -a pkgs=("$@")
+
+    local y_on="" g_on="" m_on="" off=""
+    if [[ -n "$MKHINT_FORCE_COLOR" || -t 1 ]]; then
+        if command -v tput &>/dev/null && tput setaf 2 &>/dev/null; then
+            g_on=$(tput setaf 2); y_on=$(tput setaf 3); m_on=$(tput setaf 5); off=$(tput sgr0)
+        else
+            g_on=$'\033[32m'; y_on=$'\033[33m'; m_on=$'\033[35m'; off=$'\033[0m'
+        fi
+    fi
+
+    # Refresh upstream data once for the whole invocation: a single package gets
+    # a targeted `nvchecker -e`, two or more get one full scan. Skip entirely
+    # when no package has a section (or nvchecker/the config is unavailable).
+    local any_section=0 p
+    for p in "${pkgs[@]}"; do
+        _has_nvchecker_section "$p" && { any_section=1; break; }
+    done
+    if [[ $any_section -eq 1 ]] && command -v nvchecker &>/dev/null && [[ -f "$NVCHECKER_CONFIG" ]]; then
+        if [[ ${#pkgs[@]} -eq 1 ]]; then
+            nvchecker -c "$NVCHECKER_CONFIG" -e "${pkgs[0]}" >&2 || true
+        else
+            nvchecker -c "$NVCHECKER_CONFIG" >&2 || true
+        fi
+    fi
+
+    local first=1 pkg saw_multi=0
+    for pkg in "${pkgs[@]}"; do
+        [[ $first -eq 1 ]] || echo ""
+        first=0
+
+        local info_file category sbo=""
+        info_file=$(find "$REPO_DIR" -mindepth 2 -name "${pkg}.info" 2>/dev/null | head -1)
+        if [[ -n "$info_file" && -f "$info_file" ]]; then
+            sbo=$(grep '^VERSION' "$info_file" | cut -d '"' -f2)
+            category=$(basename "$(dirname "$(dirname "$info_file")")")
+        fi
+
+        local repo=""
+        repo=$(repo_version "$pkg")
+
+        local hint=""
+        if [[ -f "${HINT_DIR%/}/${pkg}.hint" ]]; then
+            hint=$(grep '^VERSION' "${HINT_DIR%/}/${pkg}.hint" | cut -d '"' -f2)
+        fi
+
+        # Upstream (already refreshed above): only when a section exists.
+        local upstream="" upstream_note=""
+        if _has_nvchecker_section "$pkg"; then
+            upstream=$(nvchecker_latest "$pkg") || upstream_note="(no nvchecker result)"
+        else
+            upstream_note="(no nvchecker section — run 'mkhint -C' or 'mkhint -n $pkg')"
+        fi
+
+        if [[ -z "$sbo" && -z "$repo" && -z "$hint" && -z "$upstream" ]]; then
+            echo "Error: no version information found for $pkg" >&2
+            exit 2
+        fi
+
+        local header="$pkg"
+        [[ -n "$category" ]] && header="${category}/${pkg}"
+        printf '%s%s%s\n' "$g_on" "$header" "$off"
+
+        # Parallel arrays of the present sources, in display order.
+        local -a labels=() raws=() nrms=() isrepo=()
+        [[ -n "$sbo" ]]      && { labels+=(SBo:);      raws+=("$sbo");      nrms+=("$(_normalize_version "$sbo")");      isrepo+=(0); }
+        [[ -n "$repo" ]]     && { labels+=(Repo:);     raws+=("$repo");     nrms+=("$(_normalize_version "$repo")");     isrepo+=(1); }
+        [[ -n "$hint" ]]     && { labels+=(Hint:);     raws+=("$hint");     nrms+=("$(_normalize_version "$hint")");     isrepo+=(0); }
+        [[ -n "$upstream" ]] && { labels+=(Upstream:); raws+=("$upstream"); nrms+=("$(_normalize_version "$upstream")"); isrepo+=(0); }
+
+        # Comparison over the present versions.
+        local multi=0 all_equal=0 newest=""
+        if [[ ${#nrms[@]} -gt 1 ]]; then
+            multi=1
+            saw_multi=1
+            newest=$(printf '%s\n' "${nrms[@]}" | sort -V | tail -1)
+            all_equal=1
+            local n
+            for n in "${nrms[@]}"; do
+                [[ "$n" == "$newest" ]] || all_equal=0
+            done
+        fi
+
+        local i
+        for (( i=0; i<${#labels[@]}; i++ )); do
+            local col=""
+            if [[ $multi -eq 1 ]]; then
+                if [[ $all_equal -eq 1 ]]; then
+                    col="$y_on"
+                elif [[ "${nrms[$i]}" == "$newest" ]]; then
+                    col="$g_on"
+                elif [[ ${isrepo[$i]} -eq 1 ]]; then
+                    col="$m_on"
+                fi
+            fi
+            printf '  %-9s %s%s%s\n' "${labels[$i]}" "$col" "${raws[$i]}" "${col:+$off}"
+        done
+        [[ -n "$upstream_note" ]] && printf '  %-9s %s\n' "Upstream:" "$upstream_note"
+    done
+
+    if [[ $saw_multi -eq 1 && -n "$g_on" ]]; then
+        echo "(green = newest; magenta = built package behind; yellow = all match)"
+    fi
+}
+
 # Emit the TOML section label for a package: bare if the name is a valid
 # bare key ([A-Za-z0-9_] only), otherwise double-quoted. nvchecker (and TOML)
 # require quoting for names containing '.', '-', etc.
@@ -1723,6 +1893,7 @@ check_updates() {
     for pkg in "${targets[@]}"; do
         local hintpath="${HINT_DIR%/}/${pkg}.hint"
         [[ -f "$hintpath" ]] || { echo "skip ${pkg}: no hint file"; continue; }
+        grep -q '^VERSION=' "$hintpath" || { echo "skip ${pkg}: no VERSION in hint"; continue; }
         local current; current=$(grep '^VERSION=' "$hintpath" | sed 's/VERSION="//;s/"$//')
         local latest
         if ! latest=$(nvchecker_latest "$pkg"); then
@@ -1852,8 +2023,8 @@ check_updates() {
 # Main function
 main() {
     local parsed
-    parsed=$(getopt -o vV:f:n:i:lcCdNhRF \
-        --long version,set-version:,hintfile:,new:,info:,list,clean,check,delete,no-dl,help,review,fix-current,force \
+    parsed=$(getopt -o vV:f:n:i:lcCdNhRFS \
+        --long version,set-version:,hintfile:,new:,info:,list,clean,check,delete,no-dl,help,review,fix-current,force,strip-version,versions \
         -n 'mkhint' -- "$@") || { show_help; exit 1; }
     eval set -- "$parsed"
 
@@ -1898,6 +2069,14 @@ main() {
                 ;;
             --fix-current|-F)
                 COMMAND="fix-current"
+                shift
+                ;;
+            --strip-version|-S)
+                COMMAND="strip-version"
+                shift
+                ;;
+            --versions)
+                COMMAND="versions"
                 shift
                 ;;
             --delete|-d)
@@ -1968,8 +2147,18 @@ main() {
         exit 1
     fi
 
+    if [[ "$COMMAND" == "strip-version" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
+        echo "Error: --strip-version cannot be combined with --set-version/--hintfile/--new" >&2
+        exit 1
+    fi
+
     if [[ "$COMMAND" == "info" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
         echo "Error: --info cannot be combined with --set-version/--hintfile/--new" >&2
+        exit 1
+    fi
+
+    if [[ "$COMMAND" == "versions" && ( -n "$VERSION" || -n "$HINT_FILE" || -n "$NEW_HINT_FILE" ) ]]; then
+        echo "Error: --versions cannot be combined with --set-version/--hintfile/--new" >&2
         exit 1
     fi
 
@@ -2018,6 +2207,12 @@ main() {
             ;;
         fix-current)
             fix_current
+            ;;
+        strip-version)
+            strip_version "${DELETE_HINT_FILES[@]}"
+            ;;
+        versions)
+            show_versions "${DELETE_HINT_FILES[@]}"
             ;;
         info)
             show_info "$INFO_PKG"

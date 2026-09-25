@@ -1297,6 +1297,314 @@ code=$?
 set -e
 assert_exit_code    "mutually exclusive"     1 "$code"
 
+# ── T76: -S strips VERSION + DOWNLOAD/MD5SUM, keeps other edits, backs up ──────
+echo ""
+echo "T76: --strip-version removes VERSION + DOWNLOAD/MD5SUM, preserves other content"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.9.0"
+ARCH="x86_64"
+DELREQUIRES="rust-opt"
+DOWNLOAD="https://curl.se/download/curl-8.9.0.tar.gz"
+MD5SUM="abc123def456abc123def456abc123de"
+DOWNLOAD_x86_64="https://curl.se/download/curl-8.9.0.tar.gz"
+MD5SUM_x86_64="abc123def456abc123def456abc123de"
+NODOWNLOAD=yes
+EOF
+run_mkhint -S curl
+assert_not_contains "VERSION line removed"   "$MOCK_HINT/curl.hint" '^VERSION='
+assert_not_contains "DOWNLOAD removed"       "$MOCK_HINT/curl.hint" '^DOWNLOAD'
+assert_not_contains "MD5SUM removed"         "$MOCK_HINT/curl.hint" '^MD5SUM'
+assert_contains     "ARCH preserved"         "$MOCK_HINT/curl.hint" 'ARCH="x86_64"'
+assert_contains     "DELREQUIRES preserved"  "$MOCK_HINT/curl.hint" 'DELREQUIRES="rust-opt"'
+assert_contains     "NODOWNLOAD preserved"   "$MOCK_HINT/curl.hint" 'NODOWNLOAD=yes'
+assert_file_exists  "backup made"            "$MOCK_HINT/curl.hint.bak"
+assert_contains     "backup has old VERSION" "$MOCK_HINT/curl.hint.bak" 'VERSION="8.9.0"'
+assert_contains     "backup has old DOWNLOAD" "$MOCK_HINT/curl.hint.bak" 'curl-8.9.0.tar.gz'
+
+# ── T84: -S removes whole multiline DOWNLOAD/MD5SUM blocks ────────────────────
+echo ""
+echo "T84: --strip-version removes multiline DOWNLOAD/MD5SUM blocks whole"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/nvim.hint" << 'EOF'
+VERSION="0.13.0"
+DOWNLOAD="https://github.com/neovim/neovim/archive/v0.13.0/neovim-0.13.0.tar.gz \
+    https://github.com/tree-sitter/tree-sitter/archive/v0.26.7/tree-sitter-0.26.7.tar.gz"
+MD5SUM="aaa \
+    bbb"
+ARCH="x86_64"
+DELREQUIRES="rust-opt"
+EOF
+run_mkhint -S nvim
+assert_not_contains "VERSION removed"            "$MOCK_HINT/nvim.hint" '^VERSION='
+assert_not_contains "DOWNLOAD block removed"     "$MOCK_HINT/nvim.hint" '^DOWNLOAD'
+assert_not_contains "MD5SUM block removed"       "$MOCK_HINT/nvim.hint" '^MD5SUM'
+assert_not_contains "no orphan continuation URL" "$MOCK_HINT/nvim.hint" 'tree-sitter'
+assert_contains     "ARCH preserved"             "$MOCK_HINT/nvim.hint" 'ARCH="x86_64"'
+assert_contains     "DELREQUIRES preserved"      "$MOCK_HINT/nvim.hint" 'DELREQUIRES="rust-opt"'
+
+# ── T77: -S on a VERSION-less hint → no-op, no .bak churn ─────────────────────
+echo ""
+echo "T77: --strip-version on versionless hint → no-op, no .bak"
+cat > "$MOCK_HINT/novers.hint" << 'EOF'
+ARCH="x86_64"
+DELREQUIRES="rust-opt"
+EOF
+rm -f "$MOCK_HINT/novers.hint.bak"
+out=$(run_mkhint -S novers 2>&1)
+assert_file_not_exists "no .bak churn"       "$MOCK_HINT/novers.hint.bak"
+echo "$out" | grep -q "no version pin to strip" \
+    && { echo "  PASS: reports no version pin to strip"; (( PASS++ )); } \
+    || { echo "  FAIL: skip message missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T77 skip msg"); }
+assert_contains     "hint untouched"         "$MOCK_HINT/novers.hint" 'DELREQUIRES="rust-opt"'
+
+# ── T78: -S batch (no args) strips every VERSION-carrying hint ────────────────
+echo ""
+echo "T78: --strip-version with no args strips all hints that have a VERSION"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.9.0"
+ARCH="x86_64"
+EOF
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="2025.5"
+ARCH="x86_64"
+EOF
+cat > "$MOCK_HINT/novers.hint" << 'EOF'
+ARCH="x86_64"
+DELREQUIRES="rust-opt"
+EOF
+run_mkhint -S
+assert_not_contains "curl VERSION stripped"  "$MOCK_HINT/curl.hint" '^VERSION='
+assert_not_contains "clion VERSION stripped" "$MOCK_HINT/clion.hint" '^VERSION='
+assert_contains     "novers untouched"       "$MOCK_HINT/novers.hint" 'DELREQUIRES="rust-opt"'
+
+# ── T79: -S pkg1 pkg2 strips only the named hints ─────────────────────────────
+echo ""
+echo "T79: --strip-version two named hints, unrelated hint untouched"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.9.0"
+ARCH="x86_64"
+EOF
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="2025.5"
+ARCH="x86_64"
+EOF
+cat > "$MOCK_HINT/wget.hint" << 'EOF'
+VERSION="1.25.0"
+ARCH="x86_64"
+EOF
+run_mkhint -S curl clion
+assert_not_contains "curl stripped"          "$MOCK_HINT/curl.hint" '^VERSION='
+assert_not_contains "clion stripped"         "$MOCK_HINT/clion.hint" '^VERSION='
+assert_contains     "wget left alone"        "$MOCK_HINT/wget.hint" 'VERSION="1.25.0"'
+
+# ── T80: -S on missing hint → exit 2 ──────────────────────────────────────────
+echo ""
+echo "T80: --strip-version on nonexistent hint → exit 2"
+set +e
+run_mkhint -S ghost_package 2>/dev/null
+code=$?
+set -e
+assert_exit_code "strip missing exits 2" 2 "$code"
+
+# ── T81: -S idempotent → second run creates no new .bak ───────────────────────
+echo ""
+echo "T81: --strip-version idempotent on second run"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.9.0"
+ARCH="x86_64"
+EOF
+run_mkhint -S curl
+rm -f "$MOCK_HINT/curl.hint.bak"
+run_mkhint -S curl
+assert_file_not_exists "no .bak churn on re-run" "$MOCK_HINT/curl.hint.bak"
+
+# ── T82: -S combined with -V → mutually-exclusive error exit 1 ────────────────
+echo ""
+echo "T82: --strip-version with -V → exit 1"
+set +e
+run_mkhint -S -V 1.0.0 2>/dev/null
+code=$?
+set -e
+assert_exit_code "strip + -V exits 1" 1 "$code"
+
+# ── T83: -C skips a VERSION-less hint instead of crashing ─────────────────────
+echo ""
+echo "T83: --check skips versionless hints (no empty-pattern sed crash)"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+cat > "$MOCK_HINT/novers.hint" << 'EOF'
+ARCH="x86_64"
+DELREQUIRES="rust-opt"
+EOF
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "novers": { "version": "9.9.9" } } }
+EOF
+set +e
+out=$(run_mkhint -C novers < <(printf 'Y\n') 2>&1)
+code=$?
+set -e
+assert_exit_code "check versionless exits 0" 0 "$code"
+echo "$out" | grep -q "no VERSION in hint" \
+    && { echo "  PASS: reports skip for versionless hint"; (( PASS++ )); } \
+    || { echo "  FAIL: skip message missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T83 skip msg"); }
+assert_not_contains "hint not re-pinned"      "$MOCK_HINT/novers.hint" '^VERSION='
+
+# ── T85: --versions three equal sources → all yellow ──────────────────────────
+echo ""
+echo "T85: --versions SBo/Repo/Hint equal → all yellow"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+EOF
+seed_pkg network curl 8.5.0
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint --versions curl 2>&1)
+echo "$out" | grep -q 'SBo:.*8\.5\.0' && echo "$out" | grep -q 'Repo:.*8\.5\.0' && echo "$out" | grep -q 'Hint:.*8\.5\.0' \
+    && { echo "  PASS: SBo/Repo/Hint shown"; (( PASS++ )); } \
+    || { echo "  FAIL: sources missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T85 sources"); }
+[[ $(echo "$out" | grep -c $'\033\[33m') -eq 3 ]] \
+    && { echo "  PASS: all three yellow"; (( PASS++ )); } \
+    || { echo "  FAIL: expected 3 yellow lines"; echo "$out" | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T85 yellow"); }
+
+# ── T86: --versions hint newest → green; built behind → magenta ───────────────
+echo ""
+echo "T86: --versions hint newest → green, built behind → magenta, SBo plain"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.6.0"
+ARCH="x86_64"
+EOF
+seed_pkg network curl 8.4.0
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint --versions curl 2>&1)
+echo "$out" | grep -q $'\033\[32m8\.6\.0' \
+    && { echo "  PASS: hint newest green"; (( PASS++ )); } \
+    || { echo "  FAIL: hint not green"; echo "$out" | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T86 green"); }
+echo "$out" | grep -q $'\033\[35m8\.4\.0' \
+    && { echo "  PASS: built behind magenta"; (( PASS++ )); } \
+    || { echo "  FAIL: repo not magenta"; echo "$out" | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T86 magenta"); }
+echo "$out" | grep 'SBo:' | grep -q $'\033' \
+    && { echo "  FAIL: SBo should be plain"; (( FAIL++ )); ERRORS+=("T86 sbo plain"); } \
+    || { echo "  PASS: SBo plain"; (( PASS++ )); }
+
+# ── T87: --versions only SBo known → single line ──────────────────────────────
+echo ""
+echo "T87: --versions only SBo known → SBo shown, no Repo/Hint"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+out=$(run_mkhint --versions curl 2>&1)
+echo "$out" | grep -q 'SBo:.*8\.5\.0' \
+    && ! echo "$out" | grep -q 'Repo:' && ! echo "$out" | grep -q 'Hint:' \
+    && { echo "  PASS: SBo shown, no Repo/Hint"; (( PASS++ )); } \
+    || { echo "  FAIL: block wrong"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T87 block"); }
+
+# ── T88: --versions only hint known → Hint shown ──────────────────────────────
+echo ""
+echo "T88: --versions only hint known → Hint shown"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_HINT/orphanpkg.hint" << 'EOF'
+VERSION="3.0.0"
+ARCH="x86_64"
+EOF
+out=$(run_mkhint --versions orphanpkg 2>&1)
+echo "$out" | grep -q 'Hint:.*3\.0\.0' \
+    && ! echo "$out" | grep -q 'SBo:' && ! echo "$out" | grep -q 'Repo:' \
+    && { echo "  PASS: hint shown, no SBo/Repo"; (( PASS++ )); } \
+    || { echo "  FAIL: hint block wrong"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T88 hint"); }
+
+# ── T89: --versions unknown package → exit 2 ──────────────────────────────────
+echo ""
+echo "T89: --versions unknown package → exit 2"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+set +e
+out=$(run_mkhint --versions ghost_package 2>&1)
+code=$?
+set -e
+assert_exit_code "unknown package exits 2" 2 "$code"
+
+# ── T90: --versions multiple packages + no-args error ─────────────────────────
+echo ""
+echo "T90: --versions multiple packages shown; no args exits 1"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.6.0"
+ARCH="x86_64"
+EOF
+cat > "$MOCK_HINT/clion.hint" << 'EOF'
+VERSION="2025.5"
+ARCH="x86_64"
+EOF
+out=$(run_mkhint --versions curl clion 2>&1)
+echo "$out" | grep -q 'network/curl' && echo "$out" | grep -q 'development/clion' \
+    && { echo "  PASS: both packages shown"; (( PASS++ )); } \
+    || { echo "  FAIL: multiple blocks missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T90 multiple"); }
+set +e
+run_mkhint --versions 2>/dev/null
+code=$?
+set -e
+assert_exit_code "no args exits 1" 1 "$code"
+
+# ── T91: --versions upstream present → Upstream shown, green when newest ──────
+echo ""
+echo "T91: --versions with nvchecker section → Upstream line, green when newest"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+
+[curl]
+source = "github"
+github = "curl/curl"
+EOF
+cat > "$MOCK_BASE/new_ver.json" << 'EOF'
+{ "version": 2, "data": { "curl": { "version": "8.9.0" } } }
+EOF
+cat > "$MOCK_HINT/curl.hint" << 'EOF'
+VERSION="8.5.0"
+ARCH="x86_64"
+EOF
+seed_pkg network curl 8.4.0
+out=$(MKHINT_FORCE_COLOR=1 run_mkhint --versions curl 2>&1)
+echo "$out" | grep -q 'Upstream:.*8\.9\.0' \
+    && { echo "  PASS: Upstream shown"; (( PASS++ )); } \
+    || { echo "  FAIL: Upstream missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T91 upstream"); }
+echo "$out" | grep -q $'\033\[32m8\.9\.0' \
+    && { echo "  PASS: upstream newest green"; (( PASS++ )); } \
+    || { echo "  FAIL: upstream not green"; echo "$out" | cat -v | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T91 green"); }
+
+# ── T92: --versions no nvchecker section → note, exit 0 ───────────────────────
+echo ""
+echo "T92: --versions without nvchecker section → note, not an error"
+rm -f "$MOCK_HINT"/*.hint "$MOCK_HINT"/*.bak 2>/dev/null
+rm -rf "$MOCK_PKGS"
+cat > "$MOCK_BASE/nvchecker.toml" << EOF
+[__config__]
+oldver = "$MOCK_BASE/old_ver.json"
+newver = "$MOCK_BASE/new_ver.json"
+EOF
+set +e
+out=$(run_mkhint --versions curl 2>&1)
+code=$?
+set -e
+assert_exit_code "no-section check exits 0" 0 "$code"
+echo "$out" | grep -q "no nvchecker section" \
+    && { echo "  PASS: no-section note shown"; (( PASS++ )); } \
+    || { echo "  FAIL: note missing"; echo "$out" | sed 's/^/        /'; (( FAIL++ )); ERRORS+=("T92 note"); }
+
 # ── T57: -l skips hints with no VERSION ──────────────────────────────────────
 echo ""
 echo "T57: -l lists only hints that have a VERSION"

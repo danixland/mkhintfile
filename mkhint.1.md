@@ -16,6 +16,10 @@ mkhint - manage hint files for slackrepo scripts
 
 **mkhint** **\--fix-current**
 
+**mkhint** **\--strip-version** \[*FILE*...]
+
+**mkhint** **\--versions** *PKG*...
+
 **mkhint** **\--list** \[*FILE*...]
 
 **mkhint** **\--review** \[*FILE*...]
@@ -74,12 +78,37 @@ present.
 **\--check**, **-C** \[*FILE*...]
 : Check all (or the named) hints for upstream updates via **nvchecker** and
 apply them interactively. With one package, uses `nvchecker -e`; with two or
-more, one full scan. Mutually exclusive with **-V**.
+more, one full scan. Hints with no `VERSION` line are skipped. Mutually
+exclusive with **-V**.
 
 **\--fix-current**, **-F**
 : Sweep the whole repository. For every package whose `REQUIRES` contains a
 phantom dependency, ensure its hint carries the matching `DELREQUIRES`.
 Idempotent. Mutually exclusive with **-V**, **-f**, **-n**.
+
+**\--strip-version**, **-S** \[*FILE*...]
+: Remove the version pin and its version-dependent variables — `VERSION`,
+`DOWNLOAD`, `MD5SUM`, and their `_x86_64` variants — from hint files so
+slackrepo falls back to the repository's current version and download data,
+keeping every other modification (`DELREQUIRES`, `NODOWNLOAD`, `ARCH`,
+bundled-dep notes). Multiline (backslash-continued) values are removed whole.
+With no arguments, all hints in `HINT_DIR`; with names, only those. A modified
+hint is backed up to `.bak` first; a hint with none of those variables is left
+untouched (no `.bak` churn). Idempotent; edits the hint only (no `.info`
+cross-check). Mutually exclusive with **-V**, **-f**, **-n**.
+
+**\--versions** *PKG*...
+: Show every known version for one or more packages and compare them. One line
+per known source, absent sources omitted: `SBo:` (the `.info` `VERSION`),
+`Repo:` (the newest built `*.txz` in `PACKAGES_DIR`), `Hint:` (the hint's
+`VERSION`), and `Upstream:` (the latest from **nvchecker**, shown only when the
+package has a section in the nvchecker config; a targeted `nvchecker -e` runs
+first for a single package, a full scan for several). With no section, the
+upstream check is skipped and a hint to run **\--check** or **\--new** is
+printed. Colour coding matches **\--list**: newest is green, the built `Repo:`
+version is magenta when behind, all sources are yellow when every known version
+matches, and a single known source is plain. A package with no information at
+all exits 2. Mutually exclusive with **-V**, **-f**, **-n**.
 
 **\--list**, **-l** \[*FILE*...]
 : List all hint files with their hint version, `.info` version, a
@@ -160,6 +189,9 @@ List, review, sweep, delete, clean:
     mkhint --list mypackage
     mkhint --review
     mkhint --fix-current
+    mkhint --strip-version           # all hints
+    mkhint --strip-version pkg1 pkg2 # named hints
+    mkhint --versions mypackage      # SBo + built + hint + upstream
     mkhint --delete mypackage
     mkhint --info mypackage
     mkhint --clean
@@ -237,7 +269,7 @@ manifest during **\--check**. See BUNDLED DEPENDENCIES.
 
 A bash completion script ships with **mkhint** (install to
 */etc/bash-completion.d/mkhint*). It completes long and short options and, for
-**-f**, **-n**, **-d**, **-C**, **-R**, and **-l**, the package names from their
+**-f**, **-n**, **-d**, **-C**, **-S**, **-R**, **--versions**, and **-l**, the package names from their
 respective directories. With **-f** *package* already on the command line,
 **-V** *TAB* suggests the current `VERSION` from that package's hint. The
 completion script sources the same *~/.config/mkhint/config*, so its paths stay

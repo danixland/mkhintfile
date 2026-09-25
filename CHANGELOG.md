@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `--strip-version`/`-S`: remove the version pin *and* the version-dependent
+  download/checksum variables (`VERSION`, `DOWNLOAD`, `MD5SUM`, and their
+  `_x86_64` variants) from hint files so slackrepo falls back to the
+  repository's current version and download data, keeping every other
+  modification (`DELREQUIRES`, `NODOWNLOAD`, `ARCH`, bundled deps). Multiline
+  (backslash-continued) values are removed whole. No args = all hints; one or
+  more names = just those. Backs up a modified hint to `.bak`; a hint with none
+  of those variables is left untouched. Edits the hint only (no `.info`
+  cross-check).
+- `--check`/`-C` now skips hints with no `VERSION` line instead of offering an
+  update, so stripped or `DELREQUIRES`-only hints don't trip the empty-version
+  replacement path.
+- `--versions`: show and compare every known version for one or more packages —
+  the SBo `.info` `VERSION`, the newest built `*.txz` in `PACKAGES_DIR`, the
+  hint's `VERSION`, and (when an nvchecker `[pkg]` section exists) the latest
+  upstream version. Absent sources are omitted but the rest are still compared;
+  colours match `--list` (green = newest, magenta = built behind, yellow = all
+  match). With no nvchecker section the upstream check is skipped and a hint to
+  run `mkhint -C`/`-n <pkg>` is printed.
+
 ## [1.4.0] - 2026-07-10
 
 ### Added
